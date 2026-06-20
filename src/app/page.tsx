@@ -42,11 +42,13 @@ export default function AuthPage() {
         const data = await api.login({ email, password });
         localStorage.setItem("nephroaid_token", data.token);
         localStorage.setItem("nephroaid_user_id", data.user.id);
+        localStorage.setItem("nephroaid_user", JSON.stringify(data.user));
         router.push("/dashboard");
       } else {
         const data = await api.register({ email, password, role, dialysis_frequency: dialysisFrequency });
         localStorage.setItem("nephroaid_token", data.token);
         localStorage.setItem("nephroaid_user_id", data.user.id);
+        localStorage.setItem("nephroaid_user", JSON.stringify(data.user));
         router.push("/dashboard");
       }
     } catch (err: any) {

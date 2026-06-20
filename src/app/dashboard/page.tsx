@@ -23,10 +23,18 @@ export default function DashboardPage() {
   const [labRecords, setLabRecords] = useState<LabRecord[]>(DEFAULT_LAB_RECORDS);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("nephroaid_user");
-    if (savedUser) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setUser(JSON.parse(savedUser));
+    const token = localStorage.getItem("nephroaid_token");
+    const userStr = localStorage.getItem("nephroaid_user");
+    if (token && userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        // Map dialysis_frequency to dialysisFrequency for UI components
+        setUser({
+          email: u.email,
+          role: u.role,
+          dialysisFrequency: u.dialysis_frequency || "2"
+        });
+      } catch(e) {}
     } else {
       router.push("/");
     }
