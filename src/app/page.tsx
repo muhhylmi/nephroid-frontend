@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, Variants } from "motion/react";
 import { useFontSize } from "@/components/font-size-provider";
 import { Heart, ShieldCheck, Sparkle, User, Key, Eye, EyeSlash, ArrowRight, TextAUnderline } from "@phosphor-icons/react";
+import { api } from "@/lib/api";
 
 export default function AuthPage() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function AuthPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     
@@ -36,11 +37,23 @@ export default function AuthPage() {
 
     setLoading(true);
 
-    setTimeout(() => {
+    try {
+      if (isLogin) {
+        const data = await api.login({ email, password });
+        localStorage.setItem("nephroaid_token", data.token);
+        localStorage.setItem("nephroaid_user_id", data.user.id);
+        router.push("/dashboard");
+      } else {
+        const data = await api.register({ email, password, role, dialysis_frequency: dialysisFrequency });
+        localStorage.setItem("nephroaid_token", data.token);
+        localStorage.setItem("nephroaid_user_id", data.user.id);
+        router.push("/dashboard");
+      }
+    } catch (err: any) {
+      setError(err.message || "Terjadi kesalahan.");
+    } finally {
       setLoading(false);
-      localStorage.setItem("nephroaid_user", JSON.stringify({ email, role, dialysisFrequency }));
-      router.push("/dashboard");
-    }, 1200);
+    }
   };
 
   const staggerContainer: Variants = {

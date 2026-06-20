@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { api } from "@/lib/api";
 import { 
   ChatTeardropText, Plus, Trash, PaperPlaneRight, ShieldCheck, 
   Quotes, Sparkle, BookmarkSimple, X
@@ -98,11 +97,92 @@ const CITATIONS_DB: Record<string, Citation[]> = {
   ]
 };
 
+const DEFAULT_ROOMS: ChatRoom[] = [
+  {
+    id: "room-1",
+    name: "Panduan Diet & Makanan Kalium",
+    messages: [
+      {
+        id: "m-welcome-1",
+        role: "assistant",
+        content: "Halo! Saya NephroAid, asisten virtual berbasis RAG komunitas. Saya siap membantu menjawab pertanyaan Anda seputar keseharian Gagal Ginjal Kronis (GGK). Silakan tanyakan hal-seperti pantangan makanan (Pisang, Air Kelapa), cara mengatasi kram hemodialisis, atau tips mengontrol asupan cairan.",
+        timestamp: "10:00"
+      },
+      {
+        id: "m-user-1",
+        role: "user",
+        content: "Boleh makan pisang tidak ya setelah cuci darah?",
+        timestamp: "10:02"
+      },
+      {
+        id: "m-assistant-1",
+        role: "assistant",
+        content: "Berdasarkan arsip diskusi komunitas medis GGK, **buah pisang sangat disarankan untuk dibatasi** bagi pasien GGK cuci darah karena memiliki kadar kalium yang sangat tinggi (sekitar 400mg per buah). Kelebihan kalium dapat memicu kondisi hiperkalemia yang berbahaya bagi detak jantung Anda. Sebagai pengganti, Anda dapat mengonsumsi buah apel, pir, atau pepaya kupas dalam porsi kecil (target kalium harian dibatasi).",
+        timestamp: "10:03",
+        citations: [
+          {
+            sender: "dr. Andi (Sp.PD-KGH)",
+            content: "Hati-hati ya bapak ibu anggota grup, pisang itu tinggi kalium sekali. Kemarin ada pasien masuk IGD karena sesak dan jantung berdebar kencang setelah makan pisang ambon 2 buah berturut-turut. Batasi betul kalau mau buah, lebih aman apel atau pir kupas.",
+            groupName: "Grup Sehat Ginjal Kita",
+            date: "14 Feb 2026",
+            category: "Diet & Kalium"
+          },
+          {
+            sender: "Bu Ningsih (Pasien HD 6 Tahun)",
+            content: "Saya kalau pengen buah biasanya makan apel malang dipotong kecil-kecil, atau pepaya satu potong tipis. Sama dokternya dibilangin jangan makan pisang, alpukat, durian sama air kelapa. Kaliumnya ampun tinggi banget.",
+            groupName: "Komunitas HD Indonesia",
+            date: "20 Feb 2026",
+            category: "Diet & Kalium"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: "room-2",
+    name: "Kontrol Cairan Harian",
+    messages: [
+      {
+        id: "m-welcome-2",
+        role: "assistant",
+        content: "Halo! Di ruang obrolan ini, mari diskusikan tips menjaga asupan cairan harian Anda agar tidak melebihi kapasitas ultrafiltrasi mesin cuci darah Anda.",
+        timestamp: "11:00"
+      },
+      {
+        id: "m-user-2",
+        role: "user",
+        content: "Bagaimana cara mengurangi rasa haus? Saya sering kelebihan minum di antara jadwal HD.",
+        timestamp: "11:05"
+      },
+      {
+        id: "m-assistant-2",
+        role: "assistant",
+        content: "Untuk mengurangi rasa haus yang berlebih:\n1. **Kurangi garam dapur & MSG** di masakan (garam menahan cairan di sel tubuh dan memicu haus terus-menerus).\n2. **Minum air es** atau emut es batu kecil (membasahi tenggorokan lebih lama dibanding air biasa dengan volume yang jauh lebih sedikit).\n3. Gunakan gelas kecil khusus atau sedotan untuk mengontrol jatah minum harian Anda.",
+        timestamp: "11:06",
+        citations: [
+          {
+            sender: "Mbak Yanti (Edukator Medis)",
+            content: "Pasien sering mengeluh haus karena makanannya masih terlalu asin atau gurih. Coba kurangi garam dapur dan MSG di masakan. Kalau masakan hambar memang kurang enak di awal, tapi rasa haus akan berkurang drastis sehingga ga kelebihan minum.",
+            groupName: "Edukasi GGK WhatsApp Grup",
+            date: "12 Apr 2026",
+            category: "Cairan & Garam"
+          },
+          {
+            sender: "Pak Joko (Pasien HD)",
+            content: "Tips dari saya biar ga kelebihan minum: sediakan botol minum ukuran 600ml untuk jatah seharian. Setiap kali minum catat atau pakai sedotan kecil biar minumnya sedikit-sedikit. Air es juga lebih membasahi tenggorokan dibanding air biasa.",
+            groupName: "Komunitas HD Indonesia",
+            date: "18 Apr 2026",
+            category: "Cairan & Garam"
+          }
+        ]
+      }
+    ]
+  }
+];
+
 export default function ChatInterface() {
-  const [rooms, setRooms] = useState<ChatRoom[]>([]);
-  const [activeRoomId, setActiveRoomId] = useState("");
-  const [userId, setUserId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [rooms, setRooms] = useState<ChatRoom[]>(DEFAULT_ROOMS);
+  const [activeRoomId, setActiveRoomId] = useState("room-1");
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
@@ -114,55 +194,35 @@ export default function ChatInterface() {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load from Backend on mount
-  useEffect(() => {
-    async function initUser() {
-      try {
-        let storedUserId = localStorage.getItem("nephroaid_user_id");
-        if (!storedUserId) {
-          // In a real app, we'd redirect to login, but for now we just handle it
-          console.error("No user ID found in local storage");
-          setIsLoading(false);
-          return;
-        }
-        setUserId(storedUserId);
+  const saveRooms = (updatedRooms: ChatRoom[]) => {
+    setRooms(updatedRooms);
+    localStorage.setItem("nephroaid_chat_rooms", JSON.stringify(updatedRooms));
+  };
 
-        const sessions = await api.listSessions(storedUserId);
-        if (sessions.length === 0) {
-          // Create initial room
-          const defaultSession = await api.createSession(storedUserId, "Panduan Diet & Makanan Kalium");
-          await api.addMessage(defaultSession.id, "assistant", "Halo! Saya NephroAid, asisten virtual berbasis RAG komunitas. Saya siap membantu menjawab pertanyaan Anda seputar keseharian Gagal Ginjal Kronis (GGK). Silakan tanyakan hal-seperti pantangan makanan (Pisang, Air Kelapa), cara mengatasi kram hemodialisis, atau tips mengontrol asupan cairan.");
-          
-          const updatedSessions = await api.listSessions(storedUserId);
-          const messages = await api.listMessages(updatedSessions[0].id);
-          
-          setRooms([{ id: updatedSessions[0].id, name: updatedSessions[0].name, messages: messages.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content, timestamp: new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) })) }]);
-          setActiveRoomId(updatedSessions[0].id);
-        } else {
-          // load all rooms and their messages
-          const roomsData: ChatRoom[] = await Promise.all(sessions.map(async (s) => {
-            const msgs = await api.listMessages(s.id);
-            return {
-              id: s.id,
-              name: s.name,
-              messages: msgs.map(m => ({
-                id: m.id,
-                role: m.role as "user" | "assistant",
-                content: m.content,
-                timestamp: new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
-              }))
-            };
-          }));
-          setRooms(roomsData);
-          if (roomsData.length > 0) setActiveRoomId(roomsData[0].id);
+  // Load from local storage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("nephroaid_chat_rooms");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Check if it has user messages to avoid empty session display
+      const hasUserMessages = parsed.some((room: ChatRoom) =>
+        room.messages.some((msg) => msg.role === "user")
+      );
+      if (hasUserMessages) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setRooms(parsed);
+        if (parsed.length > 0) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setActiveRoomId(parsed[0].id);
         }
-      } catch (err) {
-        console.error("Failed to initialize user or sessions", err);
-      } finally {
-        setIsLoading(false);
+        return;
       }
     }
-    initUser();
+    // If empty or has no user messages, save and use DEFAULT_ROOMS
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    saveRooms(DEFAULT_ROOMS);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveRoomId(DEFAULT_ROOMS[0].id);
   }, []);
 
   // Scroll to bottom whenever messages change
@@ -172,29 +232,22 @@ export default function ChatInterface() {
     }
   }, [rooms, activeRoomId]);
 
-  const handleCreateRoom = async (name: string) => {
-    if (!userId) return;
-    try {
-      const session = await api.createSession(userId, name);
-      const welcomeMsg = await api.addMessage(session.id, "assistant", `Selamat datang di sesi "${name}". Saya NephroAid, asisten RAG Anda. Silakan tanyakan hal-hal terkait penanganan medis GGK.`);
-      
-      const newRoom: ChatRoom = {
-        id: session.id,
-        name: session.name,
-        messages: [
-          {
-            id: welcomeMsg.id,
-            role: "assistant",
-            content: welcomeMsg.content,
-            timestamp: new Date(welcomeMsg.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
-          }
-        ]
-      };
-      setRooms([newRoom, ...rooms]);
-      setActiveRoomId(newRoom.id);
-    } catch (err) {
-      console.error(err);
-    }
+  const handleCreateRoom = (name: string) => {
+    const newRoom: ChatRoom = {
+      id: `room-${Date.now()}`,
+      name: name,
+      messages: [
+        {
+          id: `m-${Date.now()}`,
+          role: "assistant",
+          content: `Selamat datang di sesi "${name}". Saya NephroAid, asisten RAG Anda. Silakan tanyakan hal-hal terkait penanganan medis GGK.`,
+          timestamp: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+        }
+      ]
+    };
+    const nextRooms = [newRoom, ...rooms];
+    saveRooms(nextRooms);
+    setActiveRoomId(newRoom.id);
   };
 
   const handleDeleteRoomClick = (roomId: string, e: React.MouseEvent) => {
@@ -207,110 +260,101 @@ export default function ChatInterface() {
     setShowDeleteConfirm(true);
   };
 
-  const confirmDeleteRoom = async () => {
+  const confirmDeleteRoom = () => {
     if (roomToDeleteId) {
-      try {
-        await api.deleteSession(roomToDeleteId);
-        const nextRooms = rooms.filter((r) => r.id !== roomToDeleteId);
-        setRooms(nextRooms);
-        if (activeRoomId === roomToDeleteId && nextRooms.length > 0) {
-          setActiveRoomId(nextRooms[0].id);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setRoomToDeleteId(null);
+      const nextRooms = rooms.filter((r) => r.id !== roomToDeleteId);
+      saveRooms(nextRooms);
+      if (activeRoomId === roomToDeleteId) {
+        setActiveRoomId(nextRooms[0].id);
       }
+      setRoomToDeleteId(null);
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !userId) return;
+    if (!input.trim()) return;
 
     const activeRoom = rooms.find((r) => r.id === activeRoomId);
     if (!activeRoom) return;
 
+    const timeString = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+
+    // User Message
+    const userMessage: Message = {
+      id: `u-${Date.now()}`,
+      role: "user",
+      content: input,
+      timestamp: timeString
+    };
+
+    const updatedMessages = [...activeRoom.messages, userMessage];
+    const updatedRooms = rooms.map((r) => {
+      if (r.id === activeRoomId) {
+        return { ...r, messages: updatedMessages };
+      }
+      return r;
+    });
+
+    saveRooms(updatedRooms);
     const query = input.toLowerCase();
-    const currentInput = input;
     setInput("");
     setIsTyping(true);
 
-    try {
-      // 1. Post User Message to DB
-      const dbUserMsg = await api.addMessage(activeRoomId, "user", currentInput);
-      const userMessage: Message = {
-        id: dbUserMsg.id,
-        role: "user",
-        content: dbUserMsg.content,
-        timestamp: new Date(dbUserMsg.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+    // Simulate RAG Backend Processing with response delay
+    setTimeout(() => {
+      let responseText = "";
+      let citations: Citation[] = [];
+
+      if (query.includes("pisang") || query.includes("kalium") || query.includes("buah")) {
+        responseText = "Berdasarkan arsip diskusi komunitas medis GGK, **buah pisang sangat disarankan untuk dibatasi** bagi pasien GGK cuci darah karena memiliki kadar kalium yang sangat tinggi (sekitar 400mg per buah). Kelebihan kalium dapat memicu kondisi hiperkalemia yang berbahaya bagi detak jantung Anda. Sebagai pengganti, Anda dapat mengonsumsi buah apel, pir, atau pepaya kupas dalam porsi kecil (target kalium harian dibatasi).";
+        citations = CITATIONS_DB.kalium;
+      } else if (query.includes("kelapa")) {
+        responseText = "Air kelapa muda sangat **tidak disarankan** bagi pasien GGK lanjut atau hemodialisis. Kandungan kalium dalam air kelapa sangat tinggi (sekitar 250mg per 100ml) dan dapat diserap sangat cepat oleh tubuh. Hal ini sering menjadi penyebab utama pasien dilarikan ke IGD karena serangan jantung mendadak akibat hiperkalemia berat.";
+        citations = CITATIONS_DB.kelapa;
+      } else if (query.includes("kram") || query.includes("hemodialisis") || query.includes("cuci darah")) {
+        responseText = "Kram otot saat cuci darah sering kali dipicu oleh penarikan cairan tubuh (ultrafiltrasi) yang terlalu cepat oleh mesin. Untuk meredakannya: \n1. **Kompres hangat** bagian otot yang kram.\n2. **Minta perawat** melambatkan kecepatan penarikan cairan (UFR) sementara waktu.\n3. Pertahankan kenaikan berat badan antardialisis (**IDWG**) kurang dari 5% berat badan kering untuk mencegah tarikan ekstrem.";
+        citations = CITATIONS_DB.kram;
+      } else if (query.includes("cairan") || query.includes("minum") || query.includes("air")) {
+        responseText = "Untuk pasien GGK, batas minum harian Anda adalah **volume urin 24 jam terakhir ditambah 500-750 ml** (sebagai pengganti keringat dan pernapasan). Untuk mengurangi rasa haus yang berlebih: \n1. Kurangi masakan yang asin/gurih (garam menahan air dan memicu haus).\n2. Minum menggunakan gelas kecil atau sedotan.\n3. Gunakan es batu kecil untuk diemut guna membasahi mulut tanpa menambah banyak volume air.";
+        citations = CITATIONS_DB.cairan;
+      } else {
+        responseText = "Pertanyaan Anda sangat penting. Maaf, saya tidak menemukan diskusi WhatsApp komunitas yang persis mencakup topik ini dalam arsip terkurasi kami. Secara umum, pastikan Anda mematuhi pembatasan asupan fosfor, kalium, dan cairan harian sesuai instruksi dokter spesialis penyakit dalam (KGH) Anda. Jangan ragu menanyakan topik spesifik seperti pisang, air kelapa, kram, atau asupan cairan.";
+        citations = [
+          {
+            sender: "Sistem Edukasi NephroAid",
+            content: "Untuk pertanyaan di luar topik darurat, selalu rujuk ke panduan klinis dokter Anda. Asisten RAG ini memprioritaskan arsip WhatsApp grup pasien terverifikasi demi keamanan pasien.",
+            groupName: "Disclaimer Medis",
+            date: "20 Jun 2026",
+            category: "Umum"
+          }
+        ];
+      }
+
+      // Add Assistant Message
+      const assistantMessage: Message = {
+        id: `a-${Date.now()}`,
+        role: "assistant",
+        content: responseText,
+        timestamp: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+        citations: citations
       };
 
-      // Optimistically update UI for user message
-      setRooms((prevRooms) => prevRooms.map((r) => {
-        if (r.id === activeRoomId) return { ...r, messages: [...r.messages, userMessage] };
-        return r;
-      }));
-
-      // 2. Simulate RAG Backend Processing with response delay
-      setTimeout(async () => {
-        let responseText = "";
-        let citations: Citation[] = [];
-
-        if (query.includes("pisang") || query.includes("kalium") || query.includes("buah")) {
-          responseText = "Berdasarkan arsip diskusi komunitas medis GGK, **buah pisang sangat disarankan untuk dibatasi** bagi pasien GGK cuci darah karena memiliki kadar kalium yang sangat tinggi (sekitar 400mg per buah). Kelebihan kalium dapat memicu kondisi hiperkalemia yang berbahaya bagi detak jantung Anda. Sebagai pengganti, Anda dapat mengonsumsi buah apel, pir, atau pepaya kupas dalam porsi kecil (target kalium harian dibatasi).";
-          citations = CITATIONS_DB.kalium;
-        } else if (query.includes("kelapa")) {
-          responseText = "Air kelapa muda sangat **tidak disarankan** bagi pasien GGK lanjut atau hemodialisis. Kandungan kalium dalam air kelapa sangat tinggi (sekitar 250mg per 100ml) dan dapat diserap sangat cepat oleh tubuh. Hal ini sering menjadi penyebab utama pasien dilarikan ke IGD karena serangan jantung mendadak akibat hiperkalemia berat.";
-          citations = CITATIONS_DB.kelapa;
-        } else if (query.includes("kram") || query.includes("hemodialisis") || query.includes("cuci darah")) {
-          responseText = "Kram otot saat cuci darah sering kali dipicu oleh penarikan cairan tubuh (ultrafiltrasi) yang terlalu cepat oleh mesin. Untuk meredakannya: \n1. **Kompres hangat** bagian otot yang kram.\n2. **Minta perawat** melambatkan kecepatan penarikan cairan (UFR) sementara waktu.\n3. Pertahankan kenaikan berat badan antardialisis (**IDWG**) kurang dari 5% berat badan kering untuk mencegah tarikan ekstrem.";
-          citations = CITATIONS_DB.kram;
-        } else if (query.includes("cairan") || query.includes("minum") || query.includes("air")) {
-          responseText = "Untuk pasien GGK, batas minum harian Anda adalah **volume urin 24 jam terakhir ditambah 500-750 ml** (sebagai pengganti keringat dan pernapasan). Untuk mengurangi rasa haus yang berlebih: \n1. Kurangi masakan yang asin/gurih (garam menahan air dan memicu haus).\n2. Minum menggunakan gelas kecil atau sedotan.\n3. Gunakan es batu kecil untuk diemut guna membasahi mulut tanpa menambah banyak volume air.";
-          citations = CITATIONS_DB.cairan;
-        } else {
-          responseText = "Pertanyaan Anda sangat penting. Maaf, saya tidak menemukan diskusi WhatsApp komunitas yang persis mencakup topik ini dalam arsip terkurasi kami. Secara umum, pastikan Anda mematuhi pembatasan asupan fosfor, kalium, dan cairan harian sesuai instruksi dokter spesialis penyakit dalam (KGH) Anda. Jangan ragu menanyakan topik spesifik seperti pisang, air kelapa, kram, atau asupan cairan.";
-          citations = [
-            {
-              sender: "Sistem Edukasi NephroAid",
-              content: "Untuk pertanyaan di luar topik darurat, selalu rujuk ke panduan klinis dokter Anda. Asisten RAG ini memprioritaskan arsip WhatsApp grup pasien terverifikasi demi keamanan pasien.",
-              groupName: "Disclaimer Medis",
-              date: "20 Jun 2026",
-              category: "Umum"
-            }
-          ];
-        }
-
-        try {
-          // 3. Save assistant message to DB
-          const dbAssistantMsg = await api.addMessage(activeRoomId, "assistant", responseText);
-          
-          const assistantMessage: Message = {
-            id: dbAssistantMsg.id,
-            role: "assistant",
-            content: dbAssistantMsg.content,
-            timestamp: new Date(dbAssistantMsg.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
-            citations: citations
-          };
-
-          setRooms((prevRooms) => prevRooms.map((r) => {
-            if (r.id === activeRoomId) {
-              return { ...r, messages: [...r.messages, assistantMessage] };
-            }
-            return r;
-          }));
-        } catch(err) {
-          console.error(err);
-        } finally {
-          setIsTyping(false);
-        }
-      }, 1500);
-
-    } catch (err) {
-      console.error(err);
       setIsTyping(false);
-    }
+      setRooms((prevRooms) => {
+        const finalRooms = prevRooms.map((r) => {
+          if (r.id === activeRoomId) {
+            return {
+              ...r,
+              messages: [...r.messages, assistantMessage]
+            };
+          }
+          return r;
+        });
+        localStorage.setItem("nephroaid_chat_rooms", JSON.stringify(finalRooms));
+        return finalRooms;
+      });
+    }, 1500);
   };
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || rooms[0];
