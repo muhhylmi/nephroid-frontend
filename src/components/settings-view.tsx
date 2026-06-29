@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { User, Heart, Gear, FloppyDisk, CheckCircle, Flask, Plus, Trash } from "@phosphor-icons/react";
+import { User, Heart, Gear, FloppyDisk, CheckCircle, Flask, Plus, Trash, X } from "@phosphor-icons/react";
 import { LabParameter } from "./lab-monitor";
+import ConfirmDialog from "@/components/confirm-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface UserProfile {
   email: string;
@@ -32,10 +39,15 @@ export default function SettingsView({
   const [targetDryWeight, setTargetDryWeight] = useState(user.targetDryWeight.toString());
   const [isSaved, setIsSaved] = useState(false);
 
-  // Custom Parameter Form States
-  const [newParamLabel, setNewParamLabel] = useState("");
-  const [newParamUnit, setNewParamUnit] = useState("");
-  const [newParamTarget, setNewParamTarget] = useState("");
+  // Deletion Confirmation States
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTargetKey, setDeleteTargetKey] = useState<string | null>(null);
+
+  // Custom Parameter Modal States
+  const [showAddParamModal, setShowAddParamModal] = useState(false);
+  const [pendingParams, setPendingParams] = useState<{ label: string; unit: string; targetRange: string }[]>([
+    { label: "", unit: "", targetRange: "" }
+  ]);
 
   // Sync state if user prop changes externally
   useEffect(() => {
@@ -63,38 +75,69 @@ export default function SettingsView({
     onUpdateParameters(updated);
   };
 
-  const handleAddParam = (e: React.FormEvent) => {
+  const handleSaveParams = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newParamLabel.trim()) return;
 
-    const key = newParamLabel.toLowerCase().replace(/\s+/g, "_");
-    
-    // Check if key already exists
-    if (parameters.some((p) => p.key === key)) {
-      alert("Parameter dengan nama ini sudah ada.");
-      return;
+    // Validate all pending parameters
+    const validParams = pendingParams.filter(p => p.label.trim() !== "");
+    if (validParams.length === 0) return;
+
+    const newParametersList = [...parameters];
+
+    for (const p of validParams) {
+      const key = p.label.toLowerCase().replace(/\s+/g, "_");
+      
+      // Check if key already exists
+      if (newParametersList.some((existing) => existing.key === key)) {
+        alert(`Parameter dengan nama "${p.label}" sudah ada.`);
+        return;
+      }
+
+      newParametersList.push({
+        key,
+        label: p.label,
+        unit: p.unit || "-",
+        targetRange: p.targetRange || "-",
+        enabled: true,
+        isCustom: true,
+      });
     }
 
-    const newParam: LabParameter = {
-      key,
-      label: newParamLabel,
-      unit: newParamUnit || "-",
-      targetRange: newParamTarget || "-",
-      enabled: true,
-      isCustom: true,
-    };
-
-    onUpdateParameters([...parameters, newParam]);
+    onUpdateParameters(newParametersList);
     
-    // Clear inputs
-    setNewParamLabel("");
-    setNewParamUnit("");
-    setNewParamTarget("");
+    // Reset modal states
+    setPendingParams([{ label: "", unit: "", targetRange: "" }]);
+    setShowAddParamModal(false);
   };
 
-  const handleDeleteParam = (key: string) => {
-    const updated = parameters.filter((p) => p.key !== key);
-    onUpdateParameters(updated);
+  const handleAddPendingRow = () => {
+    setPendingParams([...pendingParams, { label: "", unit: "", targetRange: "" }]);
+  };
+
+  const handleRemovePendingRow = (index: number) => {
+    if (pendingParams.length > 1) {
+      setPendingParams(pendingParams.filter((_, i) => i !== index));
+    }
+  };
+
+  const handlePendingChange = (index: number, field: 'label' | 'unit' | 'targetRange', value: string) => {
+    const updated = pendingParams.map((p, i) => 
+      i === index ? { ...p, [field]: value } : p
+    );
+    setPendingParams(updated);
+  };
+
+  const handleDeleteClick = (key: string) => {
+    setDeleteTargetKey(key);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteParam = () => {
+    if (deleteTargetKey) {
+      const updated = parameters.filter((p) => p.key !== deleteTargetKey);
+      onUpdateParameters(updated);
+      setDeleteTargetKey(null);
+    }
   };
 
   return (
@@ -361,7 +404,7 @@ export default function SettingsView({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleDeleteParam(param.key)}
+                                onClick={() => handleDeleteClick(param.key)}
                                 className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all cursor-pointer"
                               >
                                 <Trash weight="fill" className="w-4 h-4" />
@@ -373,55 +416,18 @@ export default function SettingsView({
                     </div>
                   )}
 
-                  {/* Add Parameter form */}
-                  <form onSubmit={handleAddParam} className="space-y-4 pt-6 border-t border-black/5 dark:border-white/5">
-                    <h4 className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Buat Parameter Baru</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground ml-1">Nama Parameter</label>
-                        <input
-                          type="text"
-                          placeholder="Contoh: Asam Urat"
-                          value={newParamLabel}
-                          onChange={(e) => setNewParamLabel(e.target.value)}
-                          className="w-full h-12 px-4 bg-black/[0.03] dark:bg-white/[0.03] border-none rounded-2xl text-sm focus:ring-1 focus:ring-primary outline-none"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground ml-1">Satuan</label>
-                        <input
-                          type="text"
-                          placeholder="Contoh: mg/dL"
-                          value={newParamUnit}
-                          onChange={(e) => setNewParamUnit(e.target.value)}
-                          className="w-full h-12 px-4 bg-black/[0.03] dark:bg-white/[0.03] border-none rounded-2xl text-sm focus:ring-1 focus:ring-primary outline-none"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground ml-1">Target / Nilai Rujukan</label>
-                        <input
-                          type="text"
-                          placeholder="Contoh: < 7.0 mg/dL"
-                          value={newParamTarget}
-                          onChange={(e) => setNewParamTarget(e.target.value)}
-                          className="w-full h-12 px-4 bg-black/[0.03] dark:bg-white/[0.03] border-none rounded-2xl text-sm focus:ring-1 focus:ring-primary outline-none"
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="pt-2 flex justify-end">
-                      <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        type="submit"
-                        className="h-12 px-6 bg-foreground text-background font-medium rounded-full shadow-md hover:bg-foreground/90 transition-all flex items-center gap-2 cursor-pointer text-xs"
-                      >
-                        <Plus weight="bold" className="w-4 h-4" />
-                        Tambah Parameter
-                      </motion.button>
-                    </div>
-                  </form>
+                  {/* Add Parameter button */}
+                  <div className="pt-6 border-t border-black/5 dark:border-white/5 flex justify-start">
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      type="button"
+                      onClick={() => setShowAddParamModal(true)}
+                      className="h-12 px-6 bg-foreground text-background font-medium rounded-full shadow-md hover:bg-foreground/90 transition-all flex items-center gap-2 cursor-pointer text-xs"
+                    >
+                      <Plus weight="bold" className="w-4 h-4" />
+                      Buat Parameter Baru
+                    </motion.button>
+                  </div>
                 </div>
               )}
               
@@ -429,6 +435,125 @@ export default function SettingsView({
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        title="Hapus Parameter Laboratorium"
+        description="Apakah Anda yakin ingin menghapus parameter kustom ini? Seluruh data yang sudah tercatat untuk parameter ini akan disembunyikan dari riwayat."
+        confirmText="Hapus"
+        onConfirm={confirmDeleteParam}
+        isDestructive={true}
+      />
+
+      <Dialog open={showAddParamModal} onOpenChange={setShowAddParamModal}>
+        <DialogContent className="sm:max-w-[500px] rounded-[2rem] p-0 border-none shadow-[0_16px_64px_rgba(0,0,0,0.12)] overflow-hidden [&>button]:hidden">
+          <div className="p-6 bg-card max-h-[85vh] flex flex-col">
+            <DialogTitle className="sr-only">Buat Parameter Baru</DialogTitle>
+            <DialogDescription className="sr-only">Form untuk menambahkan beberapa parameter kustom baru sekaligus.</DialogDescription>
+            
+            <div className="flex items-center justify-between mb-6 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-black/5 dark:bg-white/5 flex items-center justify-center">
+                  <Flask weight="duotone" className="w-5 h-5 text-foreground" />
+                </div>
+                <h3 className="font-heading font-medium text-lg">Buat Parameter Baru</h3>
+              </div>
+              <button onClick={() => setShowAddParamModal(false)} className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 transition-colors">
+                <X weight="bold" className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveParams} className="flex-1 flex flex-col min-h-0 space-y-6">
+              <div className="flex-1 overflow-y-auto pr-2 space-y-6 scrollbar-thin animate-fadeIn">
+                {pendingParams.map((p, idx) => (
+                  <div key={idx} className="p-4 bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5 rounded-2xl relative space-y-4">
+                    {pendingParams.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePendingRow(idx)}
+                        className="absolute top-3 right-3 text-muted-foreground hover:text-destructive p-1 rounded-full hover:bg-destructive/10 transition-colors"
+                      >
+                        <Trash weight="fill" className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-semibold">
+                      Parameter #{idx + 1}
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground ml-1">Nama Parameter</label>
+                        <input
+                          type="text"
+                          placeholder="Contoh: Asam Urat"
+                          value={p.label}
+                          onChange={(e) => handlePendingChange(idx, 'label', e.target.value)}
+                          className="w-full h-10 px-4 bg-black/[0.03] dark:bg-white/[0.03] border-none rounded-xl text-sm focus:ring-1 focus:ring-primary outline-none"
+                          required
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground ml-1">Satuan</label>
+                          <input
+                            type="text"
+                            placeholder="Contoh: mg/dL"
+                            value={p.unit}
+                            onChange={(e) => handlePendingChange(idx, 'unit', e.target.value)}
+                            className="w-full h-10 px-4 bg-black/[0.03] dark:bg-white/[0.03] border-none rounded-xl text-sm focus:ring-1 focus:ring-primary outline-none"
+                            required
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground ml-1">Target / Nilai Rujukan</label>
+                          <input
+                            type="text"
+                            placeholder="Contoh: 3.4 - 7.0"
+                            value={p.targetRange}
+                            onChange={(e) => handlePendingChange(idx, 'targetRange', e.target.value)}
+                            className="w-full h-10 px-4 bg-black/[0.03] dark:bg-white/[0.03] border-none rounded-xl text-sm focus:ring-1 focus:ring-primary outline-none"
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={handleAddPendingRow}
+                  className="w-full py-3 border border-dashed border-black/10 dark:border-white/10 rounded-2xl text-xs text-muted-foreground hover:text-foreground hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors flex items-center justify-center gap-2 cursor-pointer font-medium"
+                >
+                  <Plus weight="bold" className="w-3.5 h-3.5" />
+                  Tambah Parameter Lainnya
+                </button>
+              </div>
+
+              <div className="pt-4 border-t border-black/5 dark:border-white/5 flex gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowAddParamModal(false)}
+                  className="flex-1 h-12 text-sm font-medium border border-black/10 dark:border-white/10 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                >
+                  Batal
+                </button>
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  type="submit"
+                  className="flex-1 h-12 text-sm font-medium bg-foreground text-background rounded-full shadow-md hover:bg-foreground/90 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <FloppyDisk weight="fill" className="w-4 h-4" />
+                  Simpan Semua
+                </motion.button>
+              </div>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

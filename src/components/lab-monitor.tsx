@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Plus, Trash, Calendar, Flask, Info, ChartLineUp, X } from "@phosphor-icons/react";
+import { Plus, Trash, Calendar, Flask, Info, ChartLineUp, X, PencilSimple } from "@phosphor-icons/react";
 import ConfirmDialog from "@/components/confirm-dialog";
 import {
   ResponsiveContainer,
@@ -234,16 +234,17 @@ export function LabMonitorTable({
   // Form states
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [editRecordId, setEditRecordId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (showAddForm) {
+    if (showAddForm && !editRecordId) {
       const initialValues: Record<string, string> = {};
       parameters.forEach(p => {
         initialValues[p.key] = "";
       });
       setFormValues(initialValues);
     }
-  }, [showAddForm, parameters]);
+  }, [showAddForm, parameters, editRecordId]);
 
   const handleAddRecord = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -257,33 +258,28 @@ export function LabMonitorTable({
     const userId = localStorage.getItem("nephroaid_user_id");
     if (!userId) return;
 
-    const dateObj = new Date(date);
-    const formattedDate = dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-
     try {
+      const customParams = enabledParams.filter(p => p.isCustom);
+      const customValuesObj: Record<string, number> = {};
+      customParams.forEach(p => {
+        customValuesObj[p.key] = parseFloat(formValues[p.key]);
+      });
+
       // Build standard request payload (required fields in DB must always be sent)
       const dataPayload = {
-        date: formattedDate,
+        date,
         kreatinin: formValues["kreatinin"] ? parseFloat(formValues["kreatinin"]) : 0,
         ureum: formValues["ureum"] ? parseFloat(formValues["ureum"]) : 0,
         kalium: formValues["kalium"] ? parseFloat(formValues["kalium"]) : 0,
         hb: formValues["hb"] ? parseFloat(formValues["hb"]) : 0,
+        custom_values: customParams.length > 0 ? customValuesObj : undefined
       };
 
-      const res = await api.addLab(userId, dataPayload);
-
-      // Save custom fields to localStorage associated with the record ID
-      const customParams = enabledParams.filter(p => p.isCustom);
-      if (customParams.length > 0) {
-        const customValuesStr = localStorage.getItem("nephroaid_custom_lab_values") || "{}";
-        const customValues = JSON.parse(customValuesStr);
-
-        customValues[res.id] = {};
-        customParams.forEach(p => {
-          customValues[res.id][p.key] = parseFloat(formValues[p.key]);
-        });
-
-        localStorage.setItem("nephroaid_custom_lab_values", JSON.stringify(customValues));
+      if (editRecordId) {
+        await api.updateLab(editRecordId, dataPayload);
+        setEditRecordId(null);
+      } else {
+        await api.addLab(userId, dataPayload);
       }
 
       onRefresh();
@@ -291,8 +287,32 @@ export function LabMonitorTable({
       setDate(new Date().toISOString().split("T")[0]);
       setFormValues({});
     } catch (err) {
-      console.error("Failed to add lab", err);
+      console.error("Failed to save lab record", err);
     }
+  };
+
+  const handleEditClick = (rec: LabRecord) => {
+    setEditRecordId(rec.id);
+    let parsedDate = rec.date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(parsedDate)) {
+      parsedDate = new Date().toISOString().split("T")[0];
+    }
+    setDate(parsedDate);
+
+    const initialValues: Record<string, string> = {};
+    parameters.forEach(p => {
+      const val = rec[p.key];
+      initialValues[p.key] = val !== undefined && val !== null ? val.toString() : "";
+    });
+    setFormValues(initialValues);
+    setShowAddForm(true);
+  };
+
+  const handleCloseAddForm = () => {
+    setShowAddForm(false);
+    setEditRecordId(null);
+    setDate(new Date().toISOString().split("T")[0]);
+    setFormValues({});
   };
 
   const handleDeleteClick = (id: string) => {
@@ -304,13 +324,6 @@ export function LabMonitorTable({
     if (deleteTargetId) {
       try {
         await api.deleteLab(deleteTargetId);
-
-        // Clean up custom values from localStorage
-        const customValuesStr = localStorage.getItem("nephroaid_custom_lab_values") || "{}";
-        const customValues = JSON.parse(customValuesStr);
-        delete customValues[deleteTargetId];
-        localStorage.setItem("nephroaid_custom_lab_values", JSON.stringify(customValues));
-
         onRefresh();
         setDeleteTargetId(null);
       } catch (err) {
@@ -358,58 +371,77 @@ export function LabMonitorTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-black/5 dark:divide-white/5">
-              {records.map((rec) => (
-                <tr key={rec.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
-                  <td className="p-4 font-medium text-foreground whitespace-nowrap">{rec.date}</td>
-                  {enabledParams.map(param => {
-                    const val = rec[param.key];
-                    const hasValue = val !== undefined && val !== null && val !== 0;
-                    const displayVal = hasValue ? val : "-";
-                    
-                    let statusLabel = "";
-                    let statusClass = "bg-primary/10 text-primary";
-                    
-                    if (hasValue) {
-                      if (param.key === "kreatinin") {
-                        statusLabel = val > 8.0 ? "Tinggi" : "Target";
-                        statusClass = val > 8.0 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary";
-                      } else if (param.key === "ureum") {
-                        statusLabel = val > 100 ? "Tinggi" : "Target";
-                        statusClass = val > 100 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary";
-                      } else if (param.key === "kalium") {
-                        statusLabel = val > 5.5 ? "Hiperkalemia" : val < 3.5 ? "Rendah" : "Aman";
-                        statusClass = val > 5.5 ? "bg-destructive/10 text-destructive" : val < 3.5 ? "bg-amber-500/10 text-amber-500" : "bg-emerald-500/10 text-emerald-500";
-                      } else if (param.key === "hb") {
-                        statusLabel = val < 10.0 ? "Anemia" : "Aman";
-                        statusClass = val < 10.0 ? "bg-amber-500/10 text-amber-500" : "bg-emerald-500/10 text-emerald-500";
-                      } else {
-                        // Custom dynamic parameter label
-                        statusLabel = "Tercatat";
-                        statusClass = "bg-black/5 dark:bg-white/5 text-muted-foreground dark:text-muted-foreground/80";
-                      }
+              {(() => {
+                const formatDate = (dateStr: string) => {
+                  try {
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                      const d = new Date(dateStr);
+                      return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
                     }
-                    
-                    return (
-                      <td key={param.key} className="p-4 whitespace-nowrap">
-                        <span className="font-medium text-foreground">{displayVal}</span> <span className="text-xs text-muted-foreground mr-2">{param.unit}</span>
-                        {statusLabel && (
-                          <span className={`text-[9px] px-2 py-0.5 rounded-full font-semibold ${statusClass}`}>
-                            {statusLabel}
-                          </span>
-                        )}
-                      </td>
-                    );
-                  })}
-                  <td className="p-4 text-right">
-                    <button
-                      onClick={() => handleDeleteClick(rec.id)}
-                      className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all cursor-pointer"
-                    >
-                      <Trash weight="fill" className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    return dateStr;
+                  } catch (e) {
+                    return dateStr;
+                  }
+                };
+
+                return records.map((rec) => (
+                  <tr key={rec.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+                    <td className="p-4 font-medium text-foreground whitespace-nowrap">{formatDate(rec.date)}</td>
+                    {enabledParams.map(param => {
+                      const val = rec[param.key];
+                      const hasValue = val !== undefined && val !== null && val !== 0;
+                      const displayVal = hasValue ? val : "-";
+                      
+                      let statusLabel = "";
+                      let statusClass = "bg-primary/10 text-primary";
+                      
+                      if (hasValue) {
+                        if (param.key === "kreatinin") {
+                          statusLabel = val > 8.0 ? "Tinggi" : "Target";
+                          statusClass = val > 8.0 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary";
+                        } else if (param.key === "ureum") {
+                          statusLabel = val > 100 ? "Tinggi" : "Target";
+                          statusClass = val > 100 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary";
+                        } else if (param.key === "kalium") {
+                          statusLabel = val > 5.5 ? "Hiperkalemia" : val < 3.5 ? "Rendah" : "Aman";
+                          statusClass = val > 5.5 ? "bg-destructive/10 text-destructive" : val < 3.5 ? "bg-amber-500/10 text-amber-500" : "bg-emerald-500/10 text-emerald-500";
+                        } else if (param.key === "hb") {
+                          statusLabel = val < 10.0 ? "Anemia" : "Aman";
+                          statusClass = val < 10.0 ? "bg-amber-500/10 text-amber-500" : "bg-emerald-500/10 text-emerald-500";
+                        } else {
+                          statusLabel = "Tercatat";
+                          statusClass = "bg-black/5 dark:bg-white/5 text-muted-foreground dark:text-muted-foreground/80";
+                        }
+                      }
+                      
+                      return (
+                        <td key={param.key} className="p-4 whitespace-nowrap">
+                          <span className="font-medium text-foreground">{displayVal}</span> <span className="text-xs text-muted-foreground mr-2">{param.unit}</span>
+                          {statusLabel && (
+                            <span className={`text-[9px] px-2 py-0.5 rounded-full font-semibold ${statusClass}`}>
+                              {statusLabel}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="p-4 text-right flex justify-end gap-2">
+                      <button
+                        onClick={() => handleEditClick(rec)}
+                        className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl transition-all cursor-pointer"
+                      >
+                        <PencilSimple weight="bold" className="w-4.5 h-4.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteClick(rec.id)}
+                        className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all cursor-pointer"
+                      >
+                        <Trash weight="fill" className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ));
+              })()}
             </tbody>
           </table>
         )}
@@ -435,20 +467,20 @@ export function LabMonitorTable({
       />
 
       {/* Add Record Modal Dialog */}
-      <Dialog open={showAddForm} onOpenChange={setShowAddForm}>
+      <Dialog open={showAddForm} onOpenChange={(open) => { if (!open) handleCloseAddForm(); else setShowAddForm(true); }}>
         <DialogContent className="sm:max-w-[420px] rounded-[2rem] p-0 border-none shadow-[0_16px_64px_rgba(0,0,0,0.12)] overflow-hidden [&>button]:hidden">
           <div className="p-6 bg-card">
-            <DialogTitle className="sr-only">Tambah Hasil Laboratorium</DialogTitle>
-            <DialogDescription className="sr-only">Form untuk mencatat hasil pemeriksaan laboratorium baru.</DialogDescription>
+            <DialogTitle className="sr-only">{editRecordId ? "Edit Hasil Laboratorium" : "Tambah Hasil Laboratorium"}</DialogTitle>
+            <DialogDescription className="sr-only">{editRecordId ? "Form untuk mengubah data hasil laboratorium." : "Form untuk mencatat hasil pemeriksaan laboratorium baru."}</DialogDescription>
             
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-black/5 dark:bg-white/5 flex items-center justify-center">
                   <Calendar weight="duotone" className="w-5 h-5 text-foreground" />
                 </div>
-                <h3 className="font-heading font-medium text-lg">Tambah Hasil Lab</h3>
+                <h3 className="font-heading font-medium text-lg">{editRecordId ? "Edit Hasil Lab" : "Tambah Hasil Lab"}</h3>
               </div>
-              <button onClick={() => setShowAddForm(false)} className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 transition-colors">
+              <button onClick={handleCloseAddForm} className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 transition-colors">
                 <X weight="bold" className="w-4 h-4" />
               </button>
             </div>

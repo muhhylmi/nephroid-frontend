@@ -23,32 +23,7 @@ export default function DashboardPage() {
   const [labRecords, setLabRecords] = useState<LabRecord[]>([]);
   const [parameters, setParameters] = useState<LabParameter[]>([]);
 
-  useEffect(() => {
-    // Load parameters from localStorage
-    const savedParams = localStorage.getItem("nephroaid_lab_parameters");
-    if (savedParams) {
-      try {
-        setParameters(JSON.parse(savedParams));
-      } catch (e) {
-        setParameters(DEFAULT_PARAMETERS);
-      }
-    } else {
-      setParameters(DEFAULT_PARAMETERS);
-    }
-  }, []);
-
-  const handleUpdateParameters = (updated: LabParameter[]) => {
-    setParameters(updated);
-    localStorage.setItem("nephroaid_lab_parameters", JSON.stringify(updated));
-  };
-
   const mergeLabsWithCustom = (apiData: any[]): LabRecord[] => {
-    const customValuesStr = localStorage.getItem("nephroaid_custom_lab_values") || "{}";
-    let customValues: Record<string, Record<string, number>> = {};
-    try {
-      customValues = JSON.parse(customValuesStr);
-    } catch (e) {}
-
     return apiData.map((r: any) => {
       const record: LabRecord = {
         id: r.id,
@@ -59,8 +34,8 @@ export default function DashboardPage() {
         hb: r.hb,
       };
 
-      if (customValues[r.id]) {
-        Object.assign(record, customValues[r.id]);
+      if (r.custom_values) {
+        Object.assign(record, r.custom_values);
       }
 
       return record;
@@ -73,13 +48,24 @@ export default function DashboardPage() {
     if (token && userStr) {
       try {
         const u = JSON.parse(userStr);
-        // Map dialysis_frequency to dialysisFrequency for UI components
         setUser({
           email: u.email,
           role: u.role,
           dialysisFrequency: u.dialysis_frequency || "2",
           targetDryWeight: u.target_dry_weight || 60.0
         });
+
+        if (u.lab_parameters && u.lab_parameters.length > 0) {
+          setParameters(u.lab_parameters);
+          localStorage.setItem("nephroaid_lab_parameters", JSON.stringify(u.lab_parameters));
+        } else {
+          const savedParams = localStorage.getItem("nephroaid_lab_parameters");
+          if (savedParams) {
+            setParameters(JSON.parse(savedParams));
+          } else {
+            setParameters(DEFAULT_PARAMETERS);
+          }
+        }
       } catch(e) {}
     } else {
       router.push("/");
@@ -98,6 +84,27 @@ export default function DashboardPage() {
     };
     fetchLabs();
   }, [router]);
+
+  const handleUpdateParameters = async (updated: LabParameter[]) => {
+    setParameters(updated);
+    localStorage.setItem("nephroaid_lab_parameters", JSON.stringify(updated));
+
+    const userId = localStorage.getItem("nephroaid_user_id");
+    if (userId && user) {
+      try {
+        const data = await api.updateProfile(userId, {
+          email: user.email,
+          role: user.role,
+          dialysis_frequency: user.dialysisFrequency,
+          target_dry_weight: user.targetDryWeight,
+          lab_parameters: updated
+        });
+        localStorage.setItem("nephroaid_user", JSON.stringify(data));
+      } catch (err) {
+        console.error("Failed to sync lab parameters to backend", err);
+      }
+    }
+  };
 
   const handleRefreshLabs = async () => {
     const userId = localStorage.getItem("nephroaid_user_id");
@@ -118,7 +125,8 @@ export default function DashboardPage() {
         email: updatedUser.email,
         role: updatedUser.role,
         dialysis_frequency: updatedUser.dialysisFrequency,
-        target_dry_weight: updatedUser.targetDryWeight
+        target_dry_weight: updatedUser.targetDryWeight,
+        lab_parameters: parameters
       });
       
       const mappedUser = {
@@ -130,6 +138,10 @@ export default function DashboardPage() {
       
       setUser(mappedUser);
       localStorage.setItem("nephroaid_user", JSON.stringify(data));
+      if (data.lab_parameters) {
+        setParameters(data.lab_parameters);
+        localStorage.setItem("nephroaid_lab_parameters", JSON.stringify(data.lab_parameters));
+      }
     } catch (err) {
       console.error("Failed to update profile", err);
     }

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Plus, Trash, Scales, Info, Warning, CheckCircle, Gear, X } from "@phosphor-icons/react";
+import { Plus, Trash, Scales, Info, Warning, CheckCircle, Gear, X, PencilSimple } from "@phosphor-icons/react";
 import ConfirmDialog from "@/components/confirm-dialog";
 import { api } from "@/lib/api";
 import {
@@ -30,8 +30,12 @@ export default function WeightTracker() {
   const [records, setRecords] = useState<WeightRecord[]>(DEFAULT_WEIGHT_RECORDS);
   const [dryWeight, setDryWeight] = useState(60.0); // Target dry weight in kg
   const [showAddModal, setShowAddModal] = useState(false);
+  // Deletion Confirmation States
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Edit Mode States
+  const [editRecordId, setEditRecordId] = useState<string | null>(null);
 
   // Dry Weight Modal States
   const [showDryWeightModal, setShowDryWeightModal] = useState(false);
@@ -79,24 +83,41 @@ export default function WeightTracker() {
     const userId = localStorage.getItem("nephroaid_user_id");
     if (!userId) return;
 
-    const dateObj = new Date(date);
-    const formattedDate = dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-
     try {
-      const newRec = await api.addWeight(userId, {
-        date: formattedDate,
-        preWeight: parseFloat(preWeight),
-        postWeight: parseFloat(postWeight)
-      });
-      
-      const newRecord: WeightRecord = {
-        id: newRec.id,
-        date: newRec.date,
-        preWeight: newRec.preWeight,
-        postWeight: newRec.postWeight
-      };
+      if (editRecordId) {
+        // Update mode
+        const updatedRec = await api.updateWeight(editRecordId, {
+          date,
+          preWeight: parseFloat(preWeight),
+          postWeight: parseFloat(postWeight)
+        });
 
-      setRecords([...records, newRecord]);
+        setRecords(records.map(r => r.id === editRecordId ? {
+          id: updatedRec.id,
+          date: updatedRec.date,
+          preWeight: updatedRec.preWeight,
+          postWeight: updatedRec.postWeight
+        } : r));
+        
+        setEditRecordId(null);
+      } else {
+        // Add mode
+        const newRec = await api.addWeight(userId, {
+          date,
+          preWeight: parseFloat(preWeight),
+          postWeight: parseFloat(postWeight)
+        });
+        
+        const newRecord: WeightRecord = {
+          id: newRec.id,
+          date: newRec.date,
+          preWeight: newRec.preWeight,
+          postWeight: newRec.postWeight
+        };
+
+        setRecords([...records, newRecord]);
+      }
+
       setShowAddModal(false);
 
       // Clear form
@@ -104,8 +125,29 @@ export default function WeightTracker() {
       setPreWeight("");
       setPostWeight("");
     } catch (err) {
-      console.error("Failed to add weight", err);
+      console.error("Failed to save weight record", err);
     }
+  };
+
+  const handleEditClick = (rec: WeightRecord) => {
+    setEditRecordId(rec.id);
+    let parsedDate = rec.date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(parsedDate)) {
+      // Fallback to today if date is in localized Indonesian format
+      parsedDate = new Date().toISOString().split("T")[0];
+    }
+    setDate(parsedDate);
+    setPreWeight(rec.preWeight.toString());
+    setPostWeight(rec.postWeight.toString());
+    setShowAddModal(true);
+  };
+
+  const handleCloseAddModal = () => {
+    setShowAddModal(false);
+    setEditRecordId(null);
+    setDate(new Date().toISOString().split("T")[0]);
+    setPreWeight("");
+    setPostWeight("");
   };
 
   const handleDeleteClick = (id: string) => {
@@ -255,25 +297,45 @@ export default function WeightTracker() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-black/5 dark:divide-white/5">
-                {records.map((rec) => {
-                  const removedFluid = rec.preWeight - rec.postWeight;
-                  return (
-                    <tr key={rec.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
-                      <td className="p-4 font-medium text-foreground">{rec.date}</td>
-                      <td className="p-4 text-muted-foreground">{rec.preWeight} kg</td>
-                      <td className="p-4 text-muted-foreground">{rec.postWeight} kg</td>
-                      <td className="p-4 font-semibold text-primary">{removedFluid.toFixed(1)} L</td>
-                      <td className="p-4 text-right">
-                        <button
-                          onClick={() => handleDeleteClick(rec.id)}
-                          className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all cursor-pointer"
-                        >
-                          <Trash weight="fill" className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {(() => {
+                  const formatDate = (dateStr: string) => {
+                    try {
+                      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                        const d = new Date(dateStr);
+                        return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+                      }
+                      return dateStr;
+                    } catch (e) {
+                      return dateStr;
+                    }
+                  };
+
+                  return records.map((rec) => {
+                    const removedFluid = rec.preWeight - rec.postWeight;
+                    return (
+                      <tr key={rec.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+                        <td className="p-4 font-medium text-foreground">{formatDate(rec.date)}</td>
+                        <td className="p-4 text-muted-foreground">{rec.preWeight} kg</td>
+                        <td className="p-4 text-muted-foreground">{rec.postWeight} kg</td>
+                        <td className="p-4 font-semibold text-primary">{removedFluid.toFixed(1)} L</td>
+                        <td className="p-4 text-right flex justify-end gap-2">
+                          <button
+                            onClick={() => handleEditClick(rec)}
+                            className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl transition-all cursor-pointer"
+                          >
+                            <PencilSimple weight="bold" className="w-4.5 h-4.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteClick(rec.id)}
+                            className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all cursor-pointer"
+                          >
+                            <Trash weight="fill" className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>
@@ -337,20 +399,20 @@ export default function WeightTracker() {
       </Dialog>
 
       {/* Add Entry Modal Dialog */}
-      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+      <Dialog open={showAddModal} onOpenChange={(open) => { if (!open) handleCloseAddModal(); else setShowAddModal(true); }}>
         <DialogContent className="sm:max-w-[400px] rounded-[2rem] p-0 border-none shadow-[0_16px_64px_rgba(0,0,0,0.12)] overflow-hidden [&>button]:hidden">
           <div className="p-6 bg-card">
-            <DialogTitle className="sr-only">Catat Berat Badan Sesi HD</DialogTitle>
-            <DialogDescription className="sr-only">Form untuk mencatat berat badan sebelum dan sesudah HD.</DialogDescription>
+            <DialogTitle className="sr-only">{editRecordId ? "Edit Catatan Berat Badan" : "Catat Berat Badan Sesi HD"}</DialogTitle>
+            <DialogDescription className="sr-only">{editRecordId ? "Form untuk mengubah berat badan." : "Form untuk mencatat berat badan sebelum dan sesudah HD."}</DialogDescription>
             
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-black/5 dark:bg-white/5 flex items-center justify-center">
                   <Scales weight="duotone" className="w-5 h-5 text-foreground" />
                 </div>
-                <h3 className="font-heading font-medium text-lg">Catat Berat Badan</h3>
+                <h3 className="font-heading font-medium text-lg">{editRecordId ? "Edit Catatan BB" : "Catat Berat Badan"}</h3>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 transition-colors">
+              <button onClick={handleCloseAddModal} className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 transition-colors">
                 <X weight="bold" className="w-4 h-4" />
               </button>
             </div>

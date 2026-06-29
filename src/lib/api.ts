@@ -107,7 +107,7 @@ export const api = {
   // -------------------------
   // Profiles
   // -------------------------
-  updateProfile: async (userId: string, data: { email: string; role: string; dialysis_frequency: string; target_dry_weight: number }) => {
+  updateProfile: async (userId: string, data: { email: string; role: string; dialysis_frequency: string; target_dry_weight: number; lab_parameters?: any }) => {
     return fetchAPI(`/api/users/${userId}`, {
       method: "PUT",
       body: JSON.stringify(data),
@@ -128,6 +128,13 @@ export const api = {
     });
   },
   
+  updateWeight: async (weightId: string, data: { date: string; preWeight: number; postWeight: number }) => {
+    return fetchAPI(`/api/weights/${weightId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+  
   deleteWeight: async (weightId: string) => {
     return fetchAPI(`/api/weights/${weightId}`, {
       method: "DELETE",
@@ -141,9 +148,16 @@ export const api = {
     return fetchAPI(`/api/users/${userId}/labs`);
   },
   
-  addLab: async (userId: string, data: { date: string; kreatinin: number; ureum: number; kalium: number; hb: number }) => {
+  addLab: async (userId: string, data: { date: string; kreatinin: number; ureum: number; kalium: number; hb: number; custom_values?: any }) => {
     return fetchAPI(`/api/users/${userId}/labs`, {
       method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  
+  updateLab: async (labId: string, data: { date: string; kreatinin: number; ureum: number; kalium: number; hb: number; custom_values?: any }) => {
+    return fetchAPI(`/api/labs/${labId}`, {
+      method: "PUT",
       body: JSON.stringify(data),
     });
   },
