@@ -3,13 +3,11 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, Variants } from "motion/react";
-import { useFontSize } from "@/components/font-size-provider";
-import { Heart, ShieldCheck, Sparkle, User, Key, Eye, EyeSlash, ArrowRight, TextAUnderline } from "@phosphor-icons/react";
+import { Heart, ShieldCheck, Sparkle, User, Key, Eye, EyeSlash, ArrowRight } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 
 export default function AuthPage() {
   const router = useRouter();
-  const { fontSize, setFontSize } = useFontSize();
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   
@@ -80,33 +78,7 @@ export default function AuthPage() {
 
   return (
     <div className="relative min-h-[100dvh] flex flex-col md:flex-row bg-background text-foreground overflow-hidden">
-      {/* Floating Accessibility Controls */}
-      <motion.div 
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: [0.32, 0.72, 0, 1], delay: 0.5 }}
-        className="absolute top-6 right-6 z-50 flex items-center gap-2 p-1.5 bg-black/5 dark:bg-white/5 rounded-full ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-md"
-      >
-        <div className="pl-3 pr-2 flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-muted-foreground">
-          <TextAUnderline weight="light" className="w-4 h-4" />
-          <span>Teks</span>
-        </div>
-        <div className="flex gap-1">
-          {(["normal", "large", "xlarge"] as const).map((sz) => (
-            <button
-              key={sz}
-              onClick={() => setFontSize(sz)}
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-xs transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-                fontSize === sz 
-                  ? "bg-card text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10" 
-                  : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"
-              }`}
-            >
-              {sz === "normal" ? "A" : sz === "large" ? "A+" : "A++"}
-            </button>
-          ))}
-        </div>
-      </motion.div>
+
 
       {/* Editorial Left Half */}
       <div className="w-full md:w-1/2 min-h-[40dvh] md:min-h-[100dvh] p-8 md:p-16 lg:p-24 flex flex-col justify-between relative z-10">

@@ -6,6 +6,7 @@ interface UserProfile {
   email: string;
   role: string;
   dialysisFrequency: string;
+  targetDryWeight: number;
 }
 
 interface SettingsViewProps {
@@ -17,6 +18,7 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
   const [email, setEmail] = useState(user.email);
   const [role, setRole] = useState(user.role);
   const [dialysisFrequency, setDialysisFrequency] = useState(user.dialysisFrequency);
+  const [targetDryWeight, setTargetDryWeight] = useState(user.targetDryWeight.toString());
   const [isSaved, setIsSaved] = useState(false);
 
   // Sync state if user prop changes externally
@@ -25,11 +27,12 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
     setEmail(user.email);
     setRole(user.role);
     setDialysisFrequency(user.dialysisFrequency);
+    setTargetDryWeight(user.targetDryWeight.toString());
   }, [user]);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    const updatedUser = { email, role, dialysisFrequency };
+    const updatedUser = { email, role, dialysisFrequency, targetDryWeight: parseFloat(targetDryWeight) || 60.0 };
     onUpdateUser(updatedUser);
     
     setIsSaved(true);
@@ -160,6 +163,22 @@ export default function SettingsView({ user, onUpdateUser }: SettingsViewProps) 
                     <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-muted-foreground">
                       <Gear weight="fill" className="w-4 h-4 opacity-50" />
                     </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground ml-1">
+                    Target BB Kering (kg)
+                  </label>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={targetDryWeight}
+                      onChange={(e) => setTargetDryWeight(e.target.value)}
+                      className="w-full h-12 px-4 bg-black/[0.03] dark:bg-white/[0.03] border-none rounded-2xl focus:ring-1 focus:ring-primary text-sm transition-all outline-none"
+                      required
+                    />
                   </div>
                 </div>
 

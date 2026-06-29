@@ -158,12 +158,14 @@ export function LabMonitorChart({ records }: { records: LabRecord[] }) {
   );
 }
 
+import { api } from "@/lib/api";
+
 export function LabMonitorTable({
   records,
-  onSave
+  onRefresh
 }: {
   records: LabRecord[];
-  onSave: (updated: LabRecord[]) => void;
+  onRefresh: () => void;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -176,32 +178,37 @@ export function LabMonitorTable({
   const [kalium, setKalium] = useState("");
   const [hb, setHb] = useState("");
 
-  const handleAddRecord = (e: React.FormEvent) => {
+  const handleAddRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!date || !kreatinin || !ureum || !kalium || !hb) return;
+
+    const userId = localStorage.getItem("nephroaid_user_id");
+    if (!userId) return;
 
     const dateObj = new Date(date);
     const formattedDate = dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
 
-    const newRecord: LabRecord = {
-      id: `l-${Date.now()}`,
-      date: formattedDate,
-      kreatinin: parseFloat(kreatinin),
-      ureum: parseFloat(ureum),
-      kalium: parseFloat(kalium),
-      hb: parseFloat(hb)
-    };
+    try {
+      await api.addLab(userId, {
+        date: formattedDate,
+        kreatinin: parseFloat(kreatinin),
+        ureum: parseFloat(ureum),
+        kalium: parseFloat(kalium),
+        hb: parseFloat(hb)
+      });
 
-    const nextRecords = [...records, newRecord];
-    onSave(nextRecords);
-    setShowAddForm(false);
-    
-    // Clear inputs
-    setDate(new Date().toISOString().split("T")[0]);
-    setKreatinin("");
-    setUreum("");
-    setKalium("");
-    setHb("");
+      onRefresh();
+      setShowAddForm(false);
+      
+      // Clear inputs
+      setDate(new Date().toISOString().split("T")[0]);
+      setKreatinin("");
+      setUreum("");
+      setKalium("");
+      setHb("");
+    } catch (err) {
+      console.error("Failed to add lab", err);
+    }
   };
 
   const handleDeleteClick = (id: string) => {
@@ -209,11 +216,15 @@ export function LabMonitorTable({
     setShowDeleteConfirm(true);
   };
 
-  const confirmDeleteRecord = () => {
+  const confirmDeleteRecord = async () => {
     if (deleteTargetId) {
-      const nextRecords = records.filter((r) => r.id !== deleteTargetId);
-      onSave(nextRecords);
-      setDeleteTargetId(null);
+      try {
+        await api.deleteLab(deleteTargetId);
+        onRefresh();
+        setDeleteTargetId(null);
+      } catch (err) {
+        console.error("Failed to delete lab", err);
+      }
     }
   };
 

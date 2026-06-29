@@ -42,6 +42,22 @@ const getHeaders = () => {
   return headers;
 };
 
+const fetchAPI = async (endpoint: string, options?: RequestInit) => {
+  const res = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      ...getHeaders(),
+      ...options?.headers,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Failed to fetch ${endpoint}`);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+};
+
 export const api = {
   // Auth
   async register(data: any): Promise<AuthResponse> {
@@ -72,29 +88,70 @@ export const api = {
 
   // Sessions
   async createSession(userId: string, name: string): Promise<Session> {
-    const res = await fetch(`${API_URL}/api/sessions`, {
+    return fetchAPI("/api/sessions", {
       method: "POST",
-      headers: getHeaders(),
       body: JSON.stringify({ user_id: userId, name }),
     });
-    if (!res.ok) throw new Error("Failed to create session");
-    return res.json();
   },
 
   async listSessions(userId: string): Promise<Session[]> {
-    const res = await fetch(`${API_URL}/api/users/${userId}/sessions`, {
-      headers: getHeaders(),
-    });
-    if (!res.ok) throw new Error("Failed to list sessions");
-    return res.json();
+    return fetchAPI(`/api/users/${userId}/sessions`);
   },
 
   async deleteSession(sessionId: string): Promise<void> {
-    const res = await fetch(`${API_URL}/api/sessions/${sessionId}`, {
+    return fetchAPI(`/api/sessions/${sessionId}`, {
       method: "DELETE",
-      headers: getHeaders(),
     });
-    if (!res.ok) throw new Error("Failed to delete session");
+  },
+
+  // -------------------------
+  // Profiles
+  // -------------------------
+  updateProfile: async (userId: string, data: { email: string; role: string; dialysis_frequency: string; target_dry_weight: number }) => {
+    return fetchAPI(`/api/users/${userId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  // -------------------------
+  // Weights
+  // -------------------------
+  getWeights: async (userId: string) => {
+    return fetchAPI(`/api/users/${userId}/weights`);
+  },
+  
+  addWeight: async (userId: string, data: { date: string; preWeight: number; postWeight: number }) => {
+    return fetchAPI(`/api/users/${userId}/weights`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  
+  deleteWeight: async (weightId: string) => {
+    return fetchAPI(`/api/weights/${weightId}`, {
+      method: "DELETE",
+    });
+  },
+
+  // -------------------------
+  // Labs
+  // -------------------------
+  getLabs: async (userId: string) => {
+    return fetchAPI(`/api/users/${userId}/labs`);
+  },
+  
+  addLab: async (userId: string, data: { date: string; kreatinin: number; ureum: number; kalium: number; hb: number }) => {
+    return fetchAPI(`/api/users/${userId}/labs`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  
+  deleteLab: async (labId: string) => {
+    return fetchAPI(`/api/labs/${labId}`, {
+      method: "DELETE",
+    });
   },
 
   // Messages

@@ -3,24 +3,23 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, Variants } from "motion/react";
-import { useFontSize } from "@/components/font-size-provider";
+import { api } from "@/lib/api";
 import ChatInterface from "@/components/chat-interface";
 import FluidTracker from "@/components/fluid-tracker";
 import { LabMonitorChart, LabMonitorTable, LabRecord, DEFAULT_LAB_RECORDS } from "@/components/lab-monitor";
 import WeightTracker from "@/components/weight-tracker";
 import SettingsView from "@/components/settings-view";
 import { 
-  Heart, SignOut, User, TextAUnderline, SquaresFour, 
+  Heart, SignOut, User, SquaresFour, 
   ChatTeardropText, Flask, Gear, Sparkle
 } from "@phosphor-icons/react";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { fontSize, setFontSize } = useFontSize();
-  const [user, setUser] = useState<{ email: string; role: string; dialysisFrequency: string } | null>(null);
+  const [user, setUser] = useState<{ email: string; role: string; dialysisFrequency: string; targetDryWeight: number } | null>(null);
   
   const [activeTab, setActiveTab] = useState<"summary" | "chat" | "lab" | "settings">("summary");
-  const [labRecords, setLabRecords] = useState<LabRecord[]>(DEFAULT_LAB_RECORDS);
+  const [labRecords, setLabRecords] = useState<LabRecord[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem("nephroaid_token");
@@ -32,28 +31,76 @@ export default function DashboardPage() {
         setUser({
           email: u.email,
           role: u.role,
-          dialysisFrequency: u.dialysis_frequency || "2"
+          dialysisFrequency: u.dialysis_frequency || "2",
+          targetDryWeight: u.target_dry_weight || 60.0
         });
       } catch(e) {}
     } else {
       router.push("/");
     }
 
-    const savedLab = localStorage.getItem("nephroaid_lab_records");
-    if (savedLab) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLabRecords(JSON.parse(savedLab));
-    }
+    const fetchLabs = async () => {
+      const userId = localStorage.getItem("nephroaid_user_id");
+      if (userId) {
+        try {
+          const data = await api.getLabs(userId);
+          setLabRecords(data.map((r: any) => ({
+            id: r.id,
+            date: r.date,
+            kreatinin: r.kreatinin,
+            ureum: r.ureum,
+            kalium: r.kalium,
+            hb: r.hb
+          })));
+        } catch (e) {
+          console.error("Failed to fetch labs", e);
+        }
+      }
+    };
+    fetchLabs();
   }, [router]);
 
-  const handleSaveLabRecords = (updated: LabRecord[]) => {
-    setLabRecords(updated);
-    localStorage.setItem("nephroaid_lab_records", JSON.stringify(updated));
+  const handleRefreshLabs = async () => {
+    const userId = localStorage.getItem("nephroaid_user_id");
+    if (userId) {
+      try {
+        const data = await api.getLabs(userId);
+        setLabRecords(data.map((r: any) => ({
+          id: r.id,
+          date: r.date,
+          kreatinin: r.kreatinin,
+          ureum: r.ureum,
+          kalium: r.kalium,
+          hb: r.hb
+        })));
+      } catch (e) {}
+    }
   };
 
-  const handleUserUpdate = (updatedUser: { email: string; role: string; dialysisFrequency: string }) => {
-    setUser(updatedUser);
-    localStorage.setItem("nephroaid_user", JSON.stringify(updatedUser));
+  const handleUserUpdate = async (updatedUser: { email: string; role: string; dialysisFrequency: string; targetDryWeight: number }) => {
+    try {
+      const userId = localStorage.getItem("nephroaid_user_id");
+      if (!userId) return;
+      
+      const data = await api.updateProfile(userId, {
+        email: updatedUser.email,
+        role: updatedUser.role,
+        dialysis_frequency: updatedUser.dialysisFrequency,
+        target_dry_weight: updatedUser.targetDryWeight
+      });
+      
+      const mappedUser = {
+        email: data.email,
+        role: data.role,
+        dialysisFrequency: data.dialysis_frequency || "2",
+        targetDryWeight: data.target_dry_weight
+      };
+      
+      setUser(mappedUser);
+      localStorage.setItem("nephroaid_user", JSON.stringify(data));
+    } catch (err) {
+      console.error("Failed to update profile", err);
+    }
   };
 
   const handleLogout = () => {
@@ -142,29 +189,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Sidebar Footer Controls */}
-          <div className="p-6 lg:p-8 space-y-6 bg-black/[0.02] dark:bg-white/[0.02]">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                <TextAUnderline weight="light" className="w-3.5 h-3.5" />
-                <span>Ukuran Teks</span>
-              </div>
-              <div className="flex gap-1.5 p-1 bg-black/5 dark:bg-white/5 rounded-2xl">
-                {(["normal", "large", "xlarge"] as const).map((sz) => (
-                  <button
-                    key={sz}
-                    onClick={() => setFontSize(sz)}
-                    className={`flex-1 h-8 rounded-xl text-xs transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-                      fontSize === sz
-                        ? "bg-card text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {sz === "normal" ? "A" : sz === "large" ? "A+" : "A++"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
+          <div className="p-6 lg:p-8 bg-black/[0.02] dark:bg-white/[0.02]">
             <button
               onClick={handleLogout}
               className="w-full h-12 rounded-2xl bg-black/5 dark:bg-white/5 hover:bg-destructive/10 hover:text-destructive text-muted-foreground text-xs font-medium flex items-center justify-center gap-2 transition-all duration-300 active:scale-[0.98]"
@@ -246,7 +271,7 @@ export default function DashboardPage() {
                   </div>
                   <h2 className="font-heading font-medium text-3xl tracking-tight">Nilai Laboratorium</h2>
                 </div>
-                <LabMonitorTable records={labRecords} onSave={handleSaveLabRecords} />
+                <LabMonitorTable records={labRecords} onRefresh={handleRefreshLabs} />
               </div>
             )}
 

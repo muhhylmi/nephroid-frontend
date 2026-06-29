@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { Plus, Trash, Scales, Info, Warning, CheckCircle, Gear, X } from "@phosphor-icons/react";
 import ConfirmDialog from "@/components/confirm-dialog";
+import { api } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -42,45 +43,69 @@ export default function WeightTracker() {
   const [postWeight, setPostWeight] = useState("");
 
   useEffect(() => {
-    const saved = localStorage.getItem("nephroaid_weight_records");
-    if (saved) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setRecords(JSON.parse(saved));
-    }
-    const savedDry = localStorage.getItem("nephroaid_dry_weight");
-    if (savedDry) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDryWeight(parseFloat(savedDry));
+    const fetchWeights = async () => {
+      const userId = localStorage.getItem("nephroaid_user_id");
+      if (userId) {
+        try {
+          const data = await api.getWeights(userId);
+          setRecords(data.map((r: any) => ({
+            id: r.id,
+            date: r.date,
+            preWeight: r.preWeight,
+            postWeight: r.postWeight
+          })));
+        } catch (e) {
+          console.error("Failed to fetch weights", e);
+        }
+      }
+    };
+    fetchWeights();
+
+    const savedUser = localStorage.getItem("nephroaid_user");
+    if (savedUser) {
+      try {
+        const u = JSON.parse(savedUser);
+        if (u.target_dry_weight) {
+          setDryWeight(u.target_dry_weight);
+        }
+      } catch (e) {}
     }
   }, []);
 
-  const saveRecords = (updated: WeightRecord[]) => {
-    setRecords(updated);
-    localStorage.setItem("nephroaid_weight_records", JSON.stringify(updated));
-  };
-
-  const handleAddRecord = (e: React.FormEvent) => {
+  const handleAddRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!date || !preWeight || !postWeight) return;
+
+    const userId = localStorage.getItem("nephroaid_user_id");
+    if (!userId) return;
 
     const dateObj = new Date(date);
     const formattedDate = dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
 
-    const newRecord: WeightRecord = {
-      id: `w-${Date.now()}`,
-      date: formattedDate,
-      preWeight: parseFloat(preWeight),
-      postWeight: parseFloat(postWeight)
-    };
+    try {
+      const newRec = await api.addWeight(userId, {
+        date: formattedDate,
+        preWeight: parseFloat(preWeight),
+        postWeight: parseFloat(postWeight)
+      });
+      
+      const newRecord: WeightRecord = {
+        id: newRec.id,
+        date: newRec.date,
+        preWeight: newRec.preWeight,
+        postWeight: newRec.postWeight
+      };
 
-    const next = [...records, newRecord];
-    saveRecords(next);
-    setShowAddModal(false);
+      setRecords([...records, newRecord]);
+      setShowAddModal(false);
 
-    // Clear form
-    setDate(new Date().toISOString().split("T")[0]);
-    setPreWeight("");
-    setPostWeight("");
+      // Clear form
+      setDate(new Date().toISOString().split("T")[0]);
+      setPreWeight("");
+      setPostWeight("");
+    } catch (err) {
+      console.error("Failed to add weight", err);
+    }
   };
 
   const handleDeleteClick = (id: string) => {
@@ -88,21 +113,41 @@ export default function WeightTracker() {
     setShowDeleteConfirm(true);
   };
 
-  const confirmDeleteRecord = () => {
+  const confirmDeleteRecord = async () => {
     if (deleteTargetId) {
-      const next = records.filter((r) => r.id !== deleteTargetId);
-      saveRecords(next);
-      setDeleteTargetId(null);
+      try {
+        await api.deleteWeight(deleteTargetId);
+        setRecords(records.filter((r) => r.id !== deleteTargetId));
+        setDeleteTargetId(null);
+      } catch (err) {
+        console.error("Failed to delete weight", err);
+      }
     }
   };
 
-  const handleSaveDryWeight = (e: React.FormEvent) => {
+  const handleSaveDryWeight = async (e: React.FormEvent) => {
     e.preventDefault();
     const val = parseFloat(tempDryWeight);
     if (!isNaN(val) && val > 0) {
       setDryWeight(val);
-      localStorage.setItem("nephroaid_dry_weight", val.toString());
       setShowDryWeightModal(false);
+      
+      const userId = localStorage.getItem("nephroaid_user_id");
+      const savedUser = localStorage.getItem("nephroaid_user");
+      if (userId && savedUser) {
+        try {
+          const u = JSON.parse(savedUser);
+          const data = await api.updateProfile(userId, {
+            email: u.email,
+            role: u.role,
+            dialysis_frequency: u.dialysis_frequency,
+            target_dry_weight: val
+          });
+          localStorage.setItem("nephroaid_user", JSON.stringify(data));
+        } catch(e) {
+          console.error("failed to save dry weight", e);
+        }
+      }
     }
   };
 
