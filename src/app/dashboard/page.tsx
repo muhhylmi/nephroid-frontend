@@ -6,20 +6,66 @@ import { motion, AnimatePresence, Variants } from "motion/react";
 import { api } from "@/lib/api";
 import ChatInterface from "@/components/chat-interface";
 import FluidTracker from "@/components/fluid-tracker";
-import { LabMonitorChart, LabMonitorTable, LabRecord, DEFAULT_LAB_RECORDS } from "@/components/lab-monitor";
+import { LabMonitorChart, LabMonitorTable, LabRecord, LabParameter, DEFAULT_PARAMETERS } from "@/components/lab-monitor";
 import WeightTracker from "@/components/weight-tracker";
+import WeightSummaryWidget from "@/components/weight-summary-widget";
 import SettingsView from "@/components/settings-view";
 import { 
   Heart, SignOut, User, SquaresFour, 
-  ChatTeardropText, Flask, Gear, Sparkle
+  ChatTeardropText, Flask, Gear, Sparkle, Scales
 } from "@phosphor-icons/react";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<{ email: string; role: string; dialysisFrequency: string; targetDryWeight: number } | null>(null);
   
-  const [activeTab, setActiveTab] = useState<"summary" | "chat" | "lab" | "settings">("summary");
+  const [activeTab, setActiveTab] = useState<"summary" | "chat" | "lab" | "weight" | "settings">("summary");
   const [labRecords, setLabRecords] = useState<LabRecord[]>([]);
+  const [parameters, setParameters] = useState<LabParameter[]>([]);
+
+  useEffect(() => {
+    // Load parameters from localStorage
+    const savedParams = localStorage.getItem("nephroaid_lab_parameters");
+    if (savedParams) {
+      try {
+        setParameters(JSON.parse(savedParams));
+      } catch (e) {
+        setParameters(DEFAULT_PARAMETERS);
+      }
+    } else {
+      setParameters(DEFAULT_PARAMETERS);
+    }
+  }, []);
+
+  const handleUpdateParameters = (updated: LabParameter[]) => {
+    setParameters(updated);
+    localStorage.setItem("nephroaid_lab_parameters", JSON.stringify(updated));
+  };
+
+  const mergeLabsWithCustom = (apiData: any[]): LabRecord[] => {
+    const customValuesStr = localStorage.getItem("nephroaid_custom_lab_values") || "{}";
+    let customValues: Record<string, Record<string, number>> = {};
+    try {
+      customValues = JSON.parse(customValuesStr);
+    } catch (e) {}
+
+    return apiData.map((r: any) => {
+      const record: LabRecord = {
+        id: r.id,
+        date: r.date,
+        kreatinin: r.kreatinin,
+        ureum: r.ureum,
+        kalium: r.kalium,
+        hb: r.hb,
+      };
+
+      if (customValues[r.id]) {
+        Object.assign(record, customValues[r.id]);
+      }
+
+      return record;
+    });
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("nephroaid_token");
@@ -44,14 +90,7 @@ export default function DashboardPage() {
       if (userId) {
         try {
           const data = await api.getLabs(userId);
-          setLabRecords(data.map((r: any) => ({
-            id: r.id,
-            date: r.date,
-            kreatinin: r.kreatinin,
-            ureum: r.ureum,
-            kalium: r.kalium,
-            hb: r.hb
-          })));
+          setLabRecords(mergeLabsWithCustom(data));
         } catch (e) {
           console.error("Failed to fetch labs", e);
         }
@@ -65,14 +104,7 @@ export default function DashboardPage() {
     if (userId) {
       try {
         const data = await api.getLabs(userId);
-        setLabRecords(data.map((r: any) => ({
-          id: r.id,
-          date: r.date,
-          kreatinin: r.kreatinin,
-          ureum: r.ureum,
-          kalium: r.kalium,
-          hb: r.hb
-        })));
+        setLabRecords(mergeLabsWithCustom(data));
       } catch (e) {}
     }
   };
@@ -122,6 +154,7 @@ export default function DashboardPage() {
     { id: "summary", icon: SquaresFour, label: "Rangkuman" },
     { id: "chat", icon: ChatTeardropText, label: "Tanya AI" },
     { id: "lab", icon: Flask, label: "Laboratorium" },
+    { id: "weight", icon: Scales, label: "BB Kering" },
     { id: "settings", icon: Gear, label: "Pengaturan" },
   ] as const;
 
@@ -236,11 +269,13 @@ export default function DashboardPage() {
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                   <div className="lg:col-span-7">
-                    <WeightTracker />
+                    <WeightSummaryWidget targetDryWeight={user.targetDryWeight} onNavigateToWeight={() => setActiveTab("weight")} />
                   </div>
-                  <div className="lg:col-span-5 space-y-8">
+                  <div className="lg:col-span-5">
                     <FluidTracker />
-                    <LabMonitorChart records={labRecords} />
+                  </div>
+                  <div className="lg:col-span-12">
+                    <LabMonitorChart records={labRecords} parameters={parameters} />
                   </div>
                 </div>
               </div>
@@ -271,13 +306,26 @@ export default function DashboardPage() {
                   </div>
                   <h2 className="font-heading font-medium text-3xl tracking-tight">Nilai Laboratorium</h2>
                 </div>
-                <LabMonitorTable records={labRecords} onRefresh={handleRefreshLabs} />
+                <LabMonitorTable records={labRecords} parameters={parameters} onRefresh={handleRefreshLabs} />
+              </div>
+            )}
+
+            {/* Weight */}
+            {activeTab === "weight" && (
+              <div className="max-w-4xl mx-auto space-y-8">
+                <div className="mb-10">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 mb-4 rounded-full bg-black/5 dark:bg-white/5 text-[10px] uppercase tracking-[0.2em] font-mono text-muted-foreground">
+                    <span>DATABASE</span>
+                  </div>
+                  <h2 className="font-heading font-medium text-3xl tracking-tight">Berat Badan Kering</h2>
+                </div>
+                <WeightTracker />
               </div>
             )}
 
             {/* Settings */}
             {activeTab === "settings" && (
-              <SettingsView user={user} onUpdateUser={handleUserUpdate} />
+              <SettingsView user={user} onUpdateUser={handleUserUpdate} parameters={parameters} onUpdateParameters={handleUpdateParameters} />
             )}
           </motion.div>
         </AnimatePresence>
