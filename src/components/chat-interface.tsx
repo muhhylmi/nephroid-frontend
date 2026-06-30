@@ -9,6 +9,7 @@ import {
 } from "@phosphor-icons/react";
 import ConfirmDialog from "@/components/confirm-dialog";
 import CreateRoomDialog from "@/components/create-room-dialog";
+import ReactMarkdown from "react-markdown";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,40 @@ interface Message {
   content: string;
   timestamp: string;
   citations?: Citation[];
+  isStreaming?: boolean;
+}
+
+function StreamedMarkdown({ content, isFinished }: { content: string, isFinished: boolean }) {
+  const [displayed, setDisplayed] = useState(isFinished ? content : "");
+  const [isTypingAnimationFinished, setIsTypingAnimationFinished] = useState(isFinished);
+  const contentRef = useRef(content);
+  contentRef.current = content;
+
+  useEffect(() => {
+    if (isTypingAnimationFinished) return;
+    
+    let i = displayed.length;
+    const tick = () => {
+      if (i < contentRef.current.length) {
+        const diff = contentRef.current.length - i;
+        const step = diff > 40 ? 4 : diff > 15 ? 2 : 1;
+        i = Math.min(i + step, contentRef.current.length);
+        setDisplayed(contentRef.current.slice(0, i));
+      } else if (isFinished && i === contentRef.current.length) {
+        setIsTypingAnimationFinished(true);
+      }
+    };
+    
+    const interval = setInterval(tick, 15);
+    return () => clearInterval(interval);
+  }, [isFinished, isTypingAnimationFinished]);
+
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:bg-black/5 dark:prose-pre:bg-white/5 prose-pre:text-foreground prose-a:text-primary break-words">
+      <ReactMarkdown>{displayed}</ReactMarkdown>
+      {!isTypingAnimationFinished && <span className="ml-1 inline-block w-1.5 h-4 bg-primary animate-pulse align-middle opacity-80" />}
+    </div>
+  );
 }
 
 interface Citation {
@@ -54,6 +89,7 @@ export default function ChatInterface() {
   const [roomToDeleteId, setRoomToDeleteId] = useState<string | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isSendingRef = useRef(false);
 
   // Load from Backend on mount
   useEffect(() => {
@@ -167,27 +203,26 @@ export default function ChatInterface() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !userId) return;
+    if (!input.trim() || !userId || isSendingRef.current) return;
 
     const activeRoom = rooms.find((r) => r.id === activeRoomId);
     if (!activeRoom) return;
 
+    isSendingRef.current = true;
     const query = input.toLowerCase();
     const currentInput = input;
     setInput("");
     setIsTyping(true);
 
     try {
-      // 1. Post User Message to DB
-      const dbUserMsg = await api.addMessage(activeRoomId, "user", currentInput);
+      // 1. Optimistically update UI for user message
       const userMessage: Message = {
-        id: dbUserMsg.id,
+        id: "temp-user-" + Date.now(),
         role: "user",
-        content: dbUserMsg.content,
-        timestamp: new Date(dbUserMsg.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+        content: currentInput,
+        timestamp: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
       };
 
-      // Optimistically update UI for user message
       setRooms((prevRooms) => prevRooms.map((r) => {
         if (r.id === activeRoomId) return { ...r, messages: [...r.messages, userMessage] };
         return r;
@@ -219,7 +254,7 @@ export default function ChatInterface() {
       setRooms((prevRooms) => prevRooms.map(r => {
         if (r.id === activeRoomId) {
           return { ...r, messages: [...r.messages, {
-            id: assistantMsgId, role: "assistant", content: "", timestamp: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }), citations: []
+            id: assistantMsgId, role: "assistant", content: "", timestamp: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }), citations: [], isStreaming: true
           }]};
         }
         return r;
@@ -253,14 +288,26 @@ export default function ChatInterface() {
                 assistantContent += data.chunk;
                 setRooms(prev => prev.map(r => {
                    if (r.id === activeRoomId) {
-                      return { ...r, messages: r.messages.map(m => m.id === assistantMsgId ? { ...m, content: assistantContent, citations } : m) };
+                      return { ...r, messages: r.messages.map(m => m.id === assistantMsgId ? { ...m, content: assistantContent, citations, isStreaming: true } : m) };
                    }
                    return r;
                 }));
              } else if (event === "done") {
+                setRooms(prev => prev.map(r => {
+                   if (r.id === activeRoomId) {
+                      return { ...r, messages: r.messages.map(m => m.id === assistantMsgId ? { ...m, isStreaming: false } : m) };
+                   }
+                   return r;
+                }));
                 setIsTyping(false);
              } else if (event === "error") {
                 console.error("Stream error:", data.error);
+                setRooms(prev => prev.map(r => {
+                   if (r.id === activeRoomId) {
+                      return { ...r, messages: r.messages.map(m => m.id === assistantMsgId ? { ...m, isStreaming: false } : m) };
+                   }
+                   return r;
+                }));
                 setIsTyping(false);
              }
            }
@@ -271,6 +318,8 @@ export default function ChatInterface() {
     } catch (err) {
       console.error(err);
       setIsTyping(false);
+    } finally {
+      isSendingRef.current = false;
     }
   };
 
@@ -348,7 +397,11 @@ export default function ChatInterface() {
                       : "bg-card border border-black/5 dark:border-white/5 rounded-tl-sm shadow-[0_4px_16px_rgba(0,0,0,0.02)]"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  {msg.role === "user" ? (
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  ) : (
+                    <StreamedMarkdown content={msg.content} isFinished={!msg.isStreaming} />
+                  )}
                   
                   <div className={`flex items-center justify-end mt-3 text-[10px] font-mono ${msg.role === "user" ? "text-background/60" : "text-muted-foreground"}`}>
                     {msg.timestamp}
@@ -393,27 +446,21 @@ export default function ChatInterface() {
 
         {/* Input Form with Double-Bezel and Magnetic Button */}
         <div className="p-4 md:p-6 bg-transparent">
-          <div className="p-1.5 bg-card/80 backdrop-blur-xl border border-black/5 dark:border-white/10 rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.06)] flex items-center gap-2 relative">
+          <form onSubmit={handleSendMessage} className="p-1.5 bg-card/80 backdrop-blur-xl border border-black/5 dark:border-white/10 rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.06)] flex items-center gap-2 relative">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ketik pertanyaan untuk RAG..."
               className="flex-1 bg-transparent border-none focus:ring-0 px-5 text-sm h-12 outline-none"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage(e as any);
-                }
-              }}
             />
             <motion.button
+              type="submit"
               whileTap={{ scale: 0.9 }}
-              onClick={handleSendMessage}
               className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md shadow-primary/20 hover:scale-105 transition-transform"
             >
               <PaperPlaneRight weight="fill" className="w-4 h-4" />
             </motion.button>
-          </div>
+          </form>
         </div>
 
       </div>

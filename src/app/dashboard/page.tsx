@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, Variants } from "motion/react";
 import { api } from "@/lib/api";
 import ChatInterface from "@/components/chat-interface";
+import ConfirmDialog from "@/components/confirm-dialog";
 import FluidTracker from "@/components/fluid-tracker";
 import { LabMonitorChart, LabMonitorTable, LabRecord, LabParameter, DEFAULT_PARAMETERS } from "@/components/lab-monitor";
 import WeightTracker from "@/components/weight-tracker";
@@ -18,6 +19,7 @@ import {
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<{ email: string; role: string; dialysisFrequency: string; targetDryWeight: number } | null>(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
   const [activeTab, setActiveTab] = useState<"summary" | "chat" | "lab" | "weight" | "settings">("summary");
   const [labRecords, setLabRecords] = useState<LabRecord[]>([]);
@@ -236,7 +238,7 @@ export default function DashboardPage() {
           {/* Sidebar Footer Controls */}
           <div className="p-6 lg:p-8 bg-black/[0.02] dark:bg-white/[0.02]">
             <button
-              onClick={handleLogout}
+              onClick={() => setShowLogoutConfirm(true)}
               className="w-full h-12 rounded-2xl bg-black/5 dark:bg-white/5 hover:bg-destructive/10 hover:text-destructive text-muted-foreground text-xs font-medium flex items-center justify-center gap-2 transition-all duration-300 active:scale-[0.98]"
             >
               <SignOut weight="light" className="w-4 h-4" />
@@ -253,7 +255,7 @@ export default function DashboardPage() {
           <span className="font-heading text-sm font-medium">NephroAid</span>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={handleLogout} className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors">
+          <button onClick={() => setShowLogoutConfirm(true)} className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors">
             <SignOut weight="light" className="w-4 h-4" />
           </button>
         </div>
@@ -357,6 +359,17 @@ export default function DashboardPage() {
           </button>
         ))}
       </nav>
+
+      <ConfirmDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        title="Keluar dari NephroAid?"
+        description="Anda akan keluar dari akun Anda. Semua data sesi tetap tersimpan dan dapat diakses kembali saat Anda login."
+        confirmText="Ya, Keluar"
+        cancelText="Batal"
+        onConfirm={handleLogout}
+        isDestructive
+      />
 
     </div>
   );
