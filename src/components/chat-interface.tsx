@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { api } from "@/lib/api";
+import { api, API_URL } from "@/lib/api";
 import { 
   ChatTeardropText, Plus, Trash, PaperPlaneRight, ShieldCheck, 
   Quotes, Sparkle, BookmarkSimple, X
@@ -38,65 +38,6 @@ interface ChatRoom {
   messages: Message[];
 }
 
-const CITATIONS_DB: Record<string, Citation[]> = {
-  kalium: [
-    {
-      sender: "dr. Andi (Sp.PD-KGH)",
-      content: "Hati-hati ya bapak ibu anggota grup, pisang itu tinggi kalium sekali. Kemarin ada pasien masuk IGD karena sesak dan jantung berdebar kencang setelah makan pisang ambon 2 buah berturut-turut. Batasi betul kalau mau buah, lebih aman apel atau pir kupas.",
-      groupName: "Grup Sehat Ginjal Kita",
-      date: "14 Feb 2026",
-      category: "Diet & Kalium"
-    },
-    {
-      sender: "Bu Ningsih (Pasien HD 6 Tahun)",
-      content: "Saya kalau pengen buah biasanya makan apel malang dipotong kecil-kecil, atau pepaya satu potong tipis. Sama dokternya dibilangin jangan makan pisang, alpukat, durian sama air kelapa. Kaliumnya ampun tinggi banget.",
-      groupName: "Komunitas HD Indonesia",
-      date: "20 Feb 2026",
-      category: "Diet & Kalium"
-    }
-  ],
-  kelapa: [
-    {
-      sender: "Pak Heru (Pasien HD 8 Tahun)",
-      content: "Betul mbak, air kelapa pantangan keras buat kita pasien cuci darah. Dulu awal-awal HD saya sempat bandel minum setengah gelas air kelapa muda karena haus banget, malamnya langsung lemas dan dilarikan ke IGD karena kalium naik jadi 6.8. Jangan dicoba ya.",
-      groupName: "Komunitas HD Indonesia",
-      date: "03 Mar 2026",
-      category: "Diet & Kalium"
-    }
-  ],
-  kram: [
-    {
-      sender: "Bu Retno (Caregiver / Istri Pasien)",
-      content: "Kalau bapak kram di mesin cuci darah, biasanya saya langsung minta suster kurangi UFR-nya (kecepatan tarik cairan) dulu. Terus saya pijat betisnya pakai minyak kayu putih hangat dan ditegakkan telapak kakinya. Ini membantu banget biar bapak ga kesakitan.",
-      groupName: "Keluarga Tangguh GGK",
-      date: "28 Jan 2026",
-      category: "Hemodialisis & Gejala"
-    },
-    {
-      sender: "Ns. Dian (Perawat Ruang HD)",
-      content: "Bagi pasien yang sering kram di akhir-akhir jam HD, usahakan kenaikan berat badan antar dua sesi HD (interdialytic weight gain/IDWG) tidak melebihi 5% dari berat kering. Kalau naiknya terlalu banyak, mesin harus menarik cairan dengan cepat, itu pemicu kram nomor satu.",
-      groupName: "Edukasi GGK WhatsApp Grup",
-      date: "05 Feb 2026",
-      category: "Hemodialisis & Gejala"
-    }
-  ],
-  cairan: [
-    {
-      sender: "Mbak Yanti (Edukator Medis)",
-      content: "Pasien sering mengeluh haus karena makanannya masih terlalu asin atau gurih. Coba kurangi garam dapur dan MSG di masakan. Kalau masakan hambar memang kurang enak di awal, tapi rasa haus akan berkurang drastis sehingga ga kelebihan minum.",
-      groupName: "Edukasi GGK WhatsApp Grup",
-      date: "12 Apr 2026",
-      category: "Cairan & Garam"
-    },
-    {
-      sender: "Pak Joko (Pasien HD)",
-      content: "Tips dari saya biar ga kelebihan minum: sediakan botol minum ukuran 600ml untuk jatah seharian. Setiap kali minum catat atau pakai sedotan kecil biar minumnya sedikit-sedikit. Air es juga lebih membasahi tenggorokan dibanding air biasa.",
-      groupName: "Komunitas HD Indonesia",
-      date: "18 Apr 2026",
-      category: "Cairan & Garam"
-    }
-  ]
-};
 
 export default function ChatInterface() {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
@@ -252,60 +193,80 @@ export default function ChatInterface() {
         return r;
       }));
 
-      // 2. Simulate RAG Backend Processing with response delay
-      setTimeout(async () => {
-        let responseText = "";
-        let citations: Citation[] = [];
+      // 2. Stream RAG Backend Processing
+      const token = localStorage.getItem("nephroaid_token");
+      const res = await fetch(`${API_URL}/api/rag/chat/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          session_id: activeRoomId,
+          message: currentInput
+        })
+      });
 
-        if (query.includes("pisang") || query.includes("kalium") || query.includes("buah")) {
-          responseText = "Berdasarkan arsip diskusi komunitas medis GGK, **buah pisang sangat disarankan untuk dibatasi** bagi pasien GGK cuci darah karena memiliki kadar kalium yang sangat tinggi (sekitar 400mg per buah). Kelebihan kalium dapat memicu kondisi hiperkalemia yang berbahaya bagi detak jantung Anda. Sebagai pengganti, Anda dapat mengonsumsi buah apel, pir, atau pepaya kupas dalam porsi kecil (target kalium harian dibatasi).";
-          citations = CITATIONS_DB.kalium;
-        } else if (query.includes("kelapa")) {
-          responseText = "Air kelapa muda sangat **tidak disarankan** bagi pasien GGK lanjut atau hemodialisis. Kandungan kalium dalam air kelapa sangat tinggi (sekitar 250mg per 100ml) dan dapat diserap sangat cepat oleh tubuh. Hal ini sering menjadi penyebab utama pasien dilarikan ke IGD karena serangan jantung mendadak akibat hiperkalemia berat.";
-          citations = CITATIONS_DB.kelapa;
-        } else if (query.includes("kram") || query.includes("hemodialisis") || query.includes("cuci darah")) {
-          responseText = "Kram otot saat cuci darah sering kali dipicu oleh penarikan cairan tubuh (ultrafiltrasi) yang terlalu cepat oleh mesin. Untuk meredakannya: \n1. **Kompres hangat** bagian otot yang kram.\n2. **Minta perawat** melambatkan kecepatan penarikan cairan (UFR) sementara waktu.\n3. Pertahankan kenaikan berat badan antardialisis (**IDWG**) kurang dari 5% berat badan kering untuk mencegah tarikan ekstrem.";
-          citations = CITATIONS_DB.kram;
-        } else if (query.includes("cairan") || query.includes("minum") || query.includes("air")) {
-          responseText = "Untuk pasien GGK, batas minum harian Anda adalah **volume urin 24 jam terakhir ditambah 500-750 ml** (sebagai pengganti keringat dan pernapasan). Untuk mengurangi rasa haus yang berlebih: \n1. Kurangi masakan yang asin/gurih (garam menahan air dan memicu haus).\n2. Minum menggunakan gelas kecil atau sedotan.\n3. Gunakan es batu kecil untuk diemut guna membasahi mulut tanpa menambah banyak volume air.";
-          citations = CITATIONS_DB.cairan;
-        } else {
-          responseText = "Pertanyaan Anda sangat penting. Maaf, saya tidak menemukan diskusi WhatsApp komunitas yang persis mencakup topik ini dalam arsip terkurasi kami. Secara umum, pastikan Anda mematuhi pembatasan asupan fosfor, kalium, dan cairan harian sesuai instruksi dokter spesialis penyakit dalam (KGH) Anda. Jangan ragu menanyakan topik spesifik seperti pisang, air kelapa, kram, atau asupan cairan.";
-          citations = [
-            {
-              sender: "Sistem Edukasi NephroAid",
-              content: "Untuk pertanyaan di luar topik darurat, selalu rujuk ke panduan klinis dokter Anda. Asisten RAG ini memprioritaskan arsip WhatsApp grup pasien terverifikasi demi keamanan pasien.",
-              groupName: "Disclaimer Medis",
-              date: "20 Jun 2026",
-              category: "Umum"
-            }
-          ];
+      if (!res.body) throw new Error("No body from stream");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      
+      let assistantMsgId = "temp-" + Date.now();
+      let assistantContent = "";
+      let citations: Citation[] = [];
+
+      // Add placeholder message
+      setRooms((prevRooms) => prevRooms.map(r => {
+        if (r.id === activeRoomId) {
+          return { ...r, messages: [...r.messages, {
+            id: assistantMsgId, role: "assistant", content: "", timestamp: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }), citations: []
+          }]};
         }
-
-        try {
-          // 3. Save assistant message to DB
-          const dbAssistantMsg = await api.addMessage(activeRoomId, "assistant", responseText);
-          
-          const assistantMessage: Message = {
-            id: dbAssistantMsg.id,
-            role: "assistant",
-            content: dbAssistantMsg.content,
-            timestamp: new Date(dbAssistantMsg.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
-            citations: citations
-          };
-
-          setRooms((prevRooms) => prevRooms.map((r) => {
-            if (r.id === activeRoomId) {
-              return { ...r, messages: [...r.messages, assistantMessage] };
-            }
-            return r;
-          }));
-        } catch(err) {
-          console.error(err);
-        } finally {
-          setIsTyping(false);
+        return r;
+      }));
+      
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+        
+        for (const block of lines) {
+           const eventMatch = block.match(/event: (.*)\n/);
+           const dataMatch = block.match(/data: (.*)/);
+           if (eventMatch && dataMatch) {
+             const event = eventMatch[1].trim();
+             const data = JSON.parse(dataMatch[1].trim());
+             
+             if (event === "sources") {
+                citations = data.map((c: any) => ({
+                   sender: "Pengetahuan Komunitas",
+                   content: c.content,
+                   groupName: "Arsip",
+                   date: c.timestamp ? new Date(c.timestamp).toLocaleDateString("id-ID") : new Date().toLocaleDateString("id-ID"),
+                   category: "Umum"
+                }));
+             } else if (event === "message") {
+                assistantContent += data.chunk;
+                setRooms(prev => prev.map(r => {
+                   if (r.id === activeRoomId) {
+                      return { ...r, messages: r.messages.map(m => m.id === assistantMsgId ? { ...m, content: assistantContent, citations } : m) };
+                   }
+                   return r;
+                }));
+             } else if (event === "done") {
+                setIsTyping(false);
+             } else if (event === "error") {
+                console.error("Stream error:", data.error);
+                setIsTyping(false);
+             }
+           }
         }
-      }, 1500);
+      }
+      setIsTyping(false);
 
     } catch (err) {
       console.error(err);
